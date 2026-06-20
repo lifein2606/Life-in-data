@@ -175,10 +175,11 @@ export function useIngredients() {
     const ingredient = await ingredientStorage.getById(id);
     if (ingredient) {
       const updateData: any = { ...data };
-      if (data.purchasePrice !== undefined || data.purchaseSpec !== undefined) {
+      if (data.purchasePrice !== undefined || data.purchaseSpec !== undefined || data.minUnit !== undefined) {
         const newPrice = data.purchasePrice ?? ingredient.purchasePrice;
         const newSpec = data.purchaseSpec ?? ingredient.purchaseSpec;
-        updateData.minUnitPrice = costCalculator.calculateMinUnitPrice(newPrice, newSpec, ingredient.minUnit);
+        const newMinUnit = data.minUnit ?? ingredient.minUnit;
+        updateData.minUnitPrice = costCalculator.calculateMinUnitPrice(newPrice, newSpec, newMinUnit);
       }
       const updated = await ingredientStorage.update(id, updateData);
       await refreshData();
