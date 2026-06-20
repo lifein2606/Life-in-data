@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useIngredients, useApp, useMode } from '@/hooks/use-app';
 import { Button } from '@/components/ui/button';
@@ -28,7 +28,7 @@ const CATEGORIES: IngredientCategory[] = ['基酒', '糖浆', '水果', '调料'
 
 export default function IngredientsPage() {
   const router = useRouter();
-  const { ingredients, deleteIngredient } = useIngredients();
+  const { ingredients, deleteIngredient, refreshData } = useIngredients();
   const { products } = useApp();
   const { mode, exitMode } = useMode();
 
@@ -36,6 +36,14 @@ export default function IngredientsPage() {
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
   const isEditMode = mode === 'edit';
+
+  // 每次页面挂载或获得焦点时刷新数据，确保编辑后列表同步
+  useEffect(() => {
+    refreshData();
+    const handleFocus = () => refreshData();
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [refreshData]);
 
   const handleGoHome = () => {
     exitMode();
