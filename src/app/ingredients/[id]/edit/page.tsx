@@ -252,7 +252,17 @@ export default function IngredientEditPage() {
                   { value: 'L', label: '升 (L)' },
                 ]}
                 value={formData.minUnit}
-                onChange={(v) => setFormData({ ...formData, minUnit: v as 'g' | 'kg' | 'ml' | 'L' })}
+                onChange={(v) => {
+                  const newUnit = v as 'g' | 'kg' | 'ml' | 'L';
+                  // 同步更新 purchaseSpec 中的单位
+                  const specNum = formData.purchaseSpec.replace(/[^\d.]/g, '');
+                  setFormData({
+                    ...formData,
+                    minUnit: newUnit,
+                    purchaseSpec: specNum ? `${specNum}${newUnit}` : '',
+                    purchaseUnit: newUnit,
+                  });
+                }}
                 placeholder="选择单位"
                 searchPlaceholder="搜索单位..."
                 className="bg-[var(--input)] mt-1"
