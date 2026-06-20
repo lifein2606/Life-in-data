@@ -32,6 +32,3 @@
   ],
   "exclude": ["node_modules", "dist"]
 }
-```
-
-**注意**：`tailwind.config.ts` 文件不存在。项目使用 **Tailwind CSS 4**，配置已整合到 `globals.css` 中的 `@theme` 指令和 CSS 变量定义中。
