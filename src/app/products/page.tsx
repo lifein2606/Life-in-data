@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useProducts, useApp, useMode } from '@/hooks/use-app';
 import { Button } from '@/components/ui/button';
@@ -25,11 +25,19 @@ import { Plus, Search, Settings, ChevronRight, Edit2, Lock, Home, Trash2 } from 
 
 export default function ProductsPage() {
   const router = useRouter();
-  const { products, deleteProduct } = useProducts();
+  const { products, deleteProduct, refreshData } = useProducts();
   const { config, stocks } = useApp();
   const { mode, exitMode } = useMode();
 
   const [search, setSearch] = useState('');
+
+  // 每次页面挂载或获得焦点时刷新数据，确保编辑后列表同步
+  useEffect(() => {
+    refreshData();
+    const handleFocus = () => refreshData();
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [refreshData]);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [brandFilter, setBrandFilter] = useState<string>('all');
 
