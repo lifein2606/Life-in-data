@@ -2,9 +2,9 @@
 requires = ["nodejs-24"]
 
 [dev]
-build = ["pnpm", "install"]
-run = ["pnpm", "run", "dev"]
+build = ["bash", ".cozeproj/dev.sh"]
+run = ["bash", ".cozeproj/dev.sh"]
 
 [deploy]
-build = ["pnpm", "run", "build"]
-run = ["pnpm", "run", "start"]
+build = ["bash", ".cozeproj/build.sh"]
+run = ["bash", ".cozeproj/start.sh"]
