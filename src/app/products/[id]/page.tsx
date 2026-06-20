@@ -48,7 +48,11 @@ export default function ProductDetailPage() {
       setTotalAvailable(stock.totalAvailable);
       const counts: Record<string, number> = {};
       stock.packages.forEach((pkg) => {
-        counts[pkg.specId] = pkg.count;
+        // stockStorage返回specId为"100ml"格式，需映射回config spec ID（如"spec-1"）
+        const specMl = parseInt(pkg.specId);
+        const spec = config.packageSpecs.find(s => s.volume === specMl);
+        const key = spec ? spec.id : pkg.specId;
+        counts[key] = pkg.count;
       });
       setPackageCounts(counts);
       if (targetOutput === 0) {
@@ -57,7 +61,7 @@ export default function ProductDetailPage() {
     } else if (product) {
       setTargetOutput(product.standardOutput);
     }
-  }, [stock, product]);
+  }, [stock, product, config.packageSpecs]);
 
   // 计算换算后的原料用量
   const scaledIngredients = useMemo(() => {
@@ -133,16 +137,15 @@ export default function ProductDetailPage() {
     }
 
     // 构建库存更新数据（新格式：specMl + quantity）
+    // 包含所有已有记录的规格（含数量为0的，确保减少装瓶数时能正确更新）
     const packages: Array<{ specMl: number; quantity: number }> = [];
     Object.entries(packageCounts).forEach(([specId, count]) => {
-      if (count > 0) {
-        const spec = config.packageSpecs.find((s) => s.id === specId);
-        if (spec) {
-          packages.push({
-            specMl: spec.volume,
-            quantity: count,
-          });
-        }
+      const spec = config.packageSpecs.find((s) => s.id === specId);
+      if (spec) {
+        packages.push({
+          specMl: spec.volume,
+          quantity: count,
+        });
       }
     });
 
