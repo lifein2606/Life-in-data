@@ -20,6 +20,31 @@ const getSupabase = () => {
   return getSupabaseClient();
 };
 
+
+
+// 配置格式适配器：兼容数据库中旧格式（简单字符串数组）和代码期望的新格式（对象数组）
+function adaptConfigValue<T extends { enabled?: boolean }>(
+  dbValue: any,
+  defaultValue: T[],
+  idPrefix: string
+): T[] {
+  if (!dbValue) return defaultValue;
+  if (!Array.isArray(dbValue)) return defaultValue;
+  // 已经是新格式（对象数组，第一个元素有 id 属性）
+  if (dbValue.length > 0 && typeof dbValue[0] === 'object' && dbValue[0] !== null && 'id' in dbValue[0]) {
+    return dbValue;
+  }
+  // 旧格式：字符串数组，转换为新格式
+  console.warn(`[adaptConfigValue] 检测到旧格式配置数据，正在转换: ${idPrefix}`);
+  return dbValue.map((item: any, index: number) => {
+    if (typeof item === 'string') {
+      const obj: any = { id: `${idPrefix}${index + 1}`, name: item, enabled: true };
+      return obj;
+    }
+    return item;
+  }) as T[];
+}
+
 // 不再使用 localStorage 作为降级方案
 // 所有数据必须持久化到 Supabase
 
@@ -126,13 +151,13 @@ export const configStorage = {
 
       console.log('[configStorage.get] 成功获取配置，数据条数:', data?.length || 0);
 
-      // 合并默认配置
+      // 合并默认配置（使用适配器兼容旧格式）
       return {
         password: configMap.get('global_password') || DEFAULT_CONFIG.password,
-        packageSpecs: configMap.get('package_specs') || DEFAULT_CONFIG.packageSpecs,
-        brands: configMap.get('brands') || DEFAULT_CONFIG.brands,
-        categories: configMap.get('categories') || DEFAULT_CONFIG.categories,
-        methods: configMap.get('methods') || DEFAULT_CONFIG.methods,
+        packageSpecs: adaptConfigValue(configMap.get('package_specs'), DEFAULT_CONFIG.packageSpecs, 'spec-'),
+        brands: adaptConfigValue(configMap.get('brands'), DEFAULT_CONFIG.brands, 'brand-'),
+        categories: adaptConfigValue(configMap.get('categories'), DEFAULT_CONFIG.categories, 'cat-'),
+        methods: adaptConfigValue(configMap.get('methods'), DEFAULT_CONFIG.methods, 'method-'),
       };
     } catch (error) {
       console.error('[configStorage.get] 获取配置失败:', error);
