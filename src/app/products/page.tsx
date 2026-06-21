@@ -88,7 +88,6 @@ export default function ProductsPage() {
     if (isEditMode) {
       router.push('/products/new/edit');
     }
-    // 查阅模式下不跳转，只显示提示（由 Tooltip 处理）
   };
 
   // 处理查看产品详情
@@ -102,7 +101,6 @@ export default function ProductsPage() {
     if (isEditMode) {
       router.push(`/products/${productId}/edit`);
     }
-    // 查阅模式下不跳转，只显示提示（由 Tooltip 处理）
   };
 
   // 处理删除产品 - 只有编辑模式可用
@@ -120,7 +118,6 @@ export default function ProductsPage() {
     if (isEditMode) {
       router.push('/admin');
     }
-    // 查阅模式下不跳转，只显示提示（由 Tooltip 处理）
   };
 
   // 启用的分类
@@ -133,7 +130,6 @@ export default function ProductsPage() {
       <div className="content-area">
         {/* 顶部导航 */}
         <div className="mobile-header flex items-center justify-between px-4">
-          {/* 返回首页按钮 */}
           <Button
             variant="ghost"
             size="sm"
@@ -147,7 +143,6 @@ export default function ProductsPage() {
           <h1 className="text-lg font-semibold absolute left-1/2 -translate-x-1/2">产品库</h1>
 
           <div className="flex items-center gap-2">
-            {/* 管理按钮 */}
             {isEditMode ? (
               <Button
                 variant="ghost"
@@ -174,7 +169,6 @@ export default function ProductsPage() {
                 </TooltipContent>
               </Tooltip>
             )}
-            {/* 新建按钮 */}
             {isEditMode ? (
               <Button
                 variant="ghost"
@@ -252,7 +246,7 @@ export default function ProductsPage() {
                 onChange={(e) => setShowIngredientProducts(e.target.checked)}
                 className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]"
               />
-              原料产品
+              显示原料产品
             </label>
           </div>
         </div>
@@ -298,7 +292,6 @@ export default function ProductsPage() {
                             出品量：{product.standardOutput}ml
                           </div>
                         )}
-                        {/* 库存信息 */}
                         {stock && (
                           <div className="mt-2 flex items-center gap-2">
                             <span className="text-xs text-[var(--muted-foreground)]">可用：</span>
@@ -309,7 +302,6 @@ export default function ProductsPage() {
                         )}
                       </div>
                       <div className="flex items-center gap-1">
-                        {/* 删除按钮 - 编辑模式下可见 */}
                         {isEditMode && (
                           <Button
                             variant="ghost"
@@ -320,7 +312,6 @@ export default function ProductsPage() {
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         )}
-                        {/* 编辑按钮 */}
                         {isEditMode ? (
                           <Button
                             variant="ghost"
