@@ -274,8 +274,12 @@ export default function ProductDetailPage() {
                         <span className="text-sm truncate">{si.ingredientName}</span>
                         <div className="text-xs text-[var(--muted-foreground)] mt-1">
                           {si.methodName}
+                          {si.resultWeight !== undefined && si.scaledAmount > 0 && (() => {
+                            const ratio = ((si.scaledAmount - si.scaledResultWeight!) / si.scaledAmount * 100);
+                            return <span className="ml-1.5 text-[var(--warning)]">损耗{ratio.toFixed(1)}%</span>;
+                          })()}
                           {si.scaledResultWeight !== undefined && (
-                            <span className="ml-2">
+                            <span className="ml-1.5">
                               → {si.scaledResultWeight.toFixed(1)}g
                             </span>
                           )}
