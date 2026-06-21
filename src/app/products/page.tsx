@@ -30,6 +30,7 @@ export default function ProductsPage() {
   const { mode, exitMode } = useMode();
 
   const [search, setSearch] = useState('');
+  const [showIngredientProducts, setShowIngredientProducts] = useState(false);
 
   // 每次页面挂载或获得焦点时刷新数据，确保编辑后列表同步
   useEffect(() => {
@@ -38,6 +39,7 @@ export default function ProductsPage() {
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
   }, [refreshData]);
+
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [brandFilter, setBrandFilter] = useState<string>('all');
 
@@ -57,9 +59,10 @@ export default function ProductsPage() {
       const matchCategory = categoryFilter === 'all' || product.category === categoryFilter;
       const matchBrand =
         brandFilter === 'all' || product.brands.includes(brandFilter);
-      return matchSearch && matchCategory && matchBrand;
+      const matchIngredient = showIngredientProducts || !product.isIngredientProduct;
+      return matchSearch && matchCategory && matchBrand && matchIngredient;
     });
-  }, [products, search, categoryFilter, brandFilter]);
+  }, [products, search, categoryFilter, brandFilter, showIngredientProducts]);
 
   // 获取分类名称
   const getCategoryName = (categoryId: string) => {
@@ -212,7 +215,7 @@ export default function ProductsPage() {
               className="pl-9 bg-[var(--input)]"
             />
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             <Combobox
               options={[
                 { value: 'all', label: '全部分类' },
@@ -241,6 +244,16 @@ export default function ProductsPage() {
               searchPlaceholder="搜索品牌..."
               className="w-[140px] bg-[var(--input)]"
             />
+            {/* 显示原料产品勾选 */}
+            <label className="flex items-center gap-1.5 cursor-pointer select-none whitespace-nowrap text-xs text-[var(--muted-foreground)] ml-auto">
+              <input
+                type="checkbox"
+                checked={showIngredientProducts}
+                onChange={(e) => setShowIngredientProducts(e.target.checked)}
+                className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]"
+              />
+              原料产品
+            </label>
           </div>
         </div>
 
@@ -248,7 +261,7 @@ export default function ProductsPage() {
         <div className="px-4 space-y-3">
           {filteredProducts.length === 0 ? (
             <div className="text-center py-12 text-[var(--muted-foreground)]">
-              {search || categoryFilter !== 'all' || brandFilter !== 'all'
+              {search || categoryFilter !== 'all' || brandFilter !== 'all' || !showIngredientProducts
                 ? '未找到匹配的产品'
                 : '暂无产品，点击右上角 + 添加'}
             </div>
