@@ -16,8 +16,6 @@ import {
 } from '@/components/ui/tooltip';
 import { Plus, Search, Settings, ChevronRight, Trash2, Lock, Home } from 'lucide-react';
 
-// 原料分类从config读取，不再硬编码
-
 export default function IngredientsPage() {
   const router = useRouter();
   const { ingredients, deleteIngredient, refreshData } = useIngredients();
@@ -29,7 +27,6 @@ export default function IngredientsPage() {
 
   const isEditMode = mode === 'edit';
 
-  // 每次页面挂载或获得焦点时刷新数据，确保编辑后列表同步
   useEffect(() => {
     refreshData();
     const handleFocus = () => refreshData();
@@ -51,23 +48,16 @@ export default function IngredientsPage() {
   }, [ingredients, search, categoryFilter]);
 
   const isUsed = (id: string) => {
-    return (products || []).some((p) => 
+    return (products || []).some((p) =>
       (p.ingredients || []).some((i) => i.ingredientId === id)
     );
   };
 
   const handleClick = (id: string) => {
     if (isEditMode) {
-      router.push(\`/ingredients/\${id}/edit\`);
+      router.push(`/ingredients/${id}/edit`);
     } else {
-      router.push(\`/ingredients/\${id}\`);
-    }
-  };
-
-  const handleEdit = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (isEditMode) {
-      router.push(\`/ingredients/\${id}/edit\`);
+      router.push(`/ingredients/${id}`);
     }
   };
 
@@ -117,7 +107,6 @@ export default function IngredientsPage() {
           <h1 className="text-lg font-semibold absolute left-1/2 -translate-x-1/2">原料库</h1>
 
           <div className="flex items-center gap-2">
-            {/* 管理按钮 - 跳转到原料库专属设置页 */}
             {isEditMode ? (
               <Button
                 variant="ghost"
@@ -144,7 +133,6 @@ export default function IngredientsPage() {
                 </TooltipContent>
               </Tooltip>
             )}
-            {/* 新建按钮 */}
             {isEditMode ? (
               <Button
                 variant="ghost"
