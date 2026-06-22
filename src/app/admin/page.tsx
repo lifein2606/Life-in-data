@@ -134,9 +134,32 @@ export default function AdminPage() {
     const newMethods = config.methods.filter((method) => method.id !== id);
     await updateConfig({ ...config, methods: newMethods });
   };
+  // 更新原料分类（异步）
+  const updateIngredientCategory = async (id: string, updates: Partial<Category>) => {
+    const newCats = config.ingredientCategories.map((cat) =>
+      cat.id === id ? { ...cat, ...updates } : cat
+    );
+    await updateConfig({ ...config, ingredientCategories: newCats });
+  };
+
+  const addIngredientCategory = async () => {
+    const newCat = {
+      id: `icat-${Date.now()}`,
+      name: '新分类',
+      enabled: true,
+    };
+    await updateConfig({ ...config, ingredientCategories: [...config.ingredientCategories, newCat] });
+    setEditValue('新分类');
+  };
+
+  const deleteIngredientCategory = async (id: string) => {
+    const newCats = config.ingredientCategories.filter((cat) => cat.id !== id);
+    await updateConfig({ ...config, ingredientCategories: newCats });
+  };
+
 
   // 保存编辑（异步）
-  const handleSaveEdit = async (type: 'spec' | 'brand' | 'category' | 'method') => {
+  const handleSaveEdit = async (type: 'spec' | 'brand' | 'category' | 'method' | 'ingredientCategory') => {
     if (!editingItem || !editValue.trim()) return;
 
     switch (type) {
@@ -149,6 +172,9 @@ export default function AdminPage() {
       case 'category':
         await updateCategory(editingItem, { name: editValue.trim() });
         break;
+      case 'ingredientCategory':
+        await updateIngredientCategory(editId, { name: editValue });
+        break;
       case 'method':
         await updateMethod(editingItem, { name: editValue.trim() });
         break;
@@ -160,7 +186,7 @@ export default function AdminPage() {
   // 通用列表项渲染
   const renderListItem = (
     item: { id: string; name: string; enabled: boolean },
-    type: 'spec' | 'brand' | 'category' | 'method',
+    type: 'spec' | 'brand' | 'category' | 'method' | 'ingredientCategory',
     extra?: React.ReactNode
   ) => (
     <div
@@ -193,7 +219,10 @@ export default function AdminPage() {
               case 'category':
                 updateCategory(item.id, { enabled: checked });
                 break;
-              case 'method':
+              case 'ingredientCategory':
+        await updateIngredientCategory(editId, { name: editValue });
+        break;
+      case 'method':
                 updateMethod(item.id, { enabled: checked });
                 break;
             }
@@ -249,7 +278,10 @@ export default function AdminPage() {
                   case 'category':
                     deleteCategory(item.id);
                     break;
-                  case 'method':
+                  case 'ingredientCategory':
+        await updateIngredientCategory(editId, { name: editValue });
+        break;
+      case 'method':
                     deleteMethod(item.id);
                     break;
                 }
