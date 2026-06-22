@@ -10,6 +10,8 @@ import {
   Category,
   Method,
   ProductIngredient,
+  IngredientSource,
+  IngredientUnit,
 } from '@/types';
 
 // Supabase 客户端获取函数（延迟初始化，仅在客户端）
@@ -159,6 +161,8 @@ export const configStorage = {
         categories: adaptConfigValue(configMap.get('categories'), DEFAULT_CONFIG.categories, 'cat-'),
         methods: adaptConfigValue(configMap.get('methods'), DEFAULT_CONFIG.methods, 'method-'),
         ingredientCategories: adaptConfigValue(configMap.get('ingredient_categories'), DEFAULT_CONFIG.ingredientCategories, 'icat-'),
+        ingredientSources: adaptConfigValue(configMap.get('ingredient_sources'), DEFAULT_CONFIG.ingredientSources, 'isrc-'),
+        ingredientUnits: adaptConfigValue(configMap.get('ingredient_units'), DEFAULT_CONFIG.ingredientUnits, 'iunit-'),
       };
     } catch (error) {
       console.error('[configStorage.get] 获取配置失败:', error);
@@ -178,6 +182,8 @@ export const configStorage = {
       { key: 'categories', value: config.categories },
       { key: 'methods', value: config.methods },
       { key: 'ingredient_categories', value: config.ingredientCategories },
+      { key: 'ingredient_sources', value: config.ingredientSources },
+      { key: 'ingredient_units', value: config.ingredientUnits },
     ];
     
     for (const c of configs) {
