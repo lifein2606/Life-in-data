@@ -21,15 +21,15 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Plus, Search, ChevronRight, Trash2, Lock, Home } from 'lucide-react';
+import { Plus, Search, Settings, ChevronRight, Trash2, Lock, Home } from 'lucide-react';
 import { Ingredient, IngredientCategory } from '@/types';
 
-const CATEGORIES: IngredientCategory[] = ['基酒', '糖浆', '水果', '调料', '自制原料', '其他'];
+// 原料分类从config读取，不再硬编码
 
 export default function IngredientsPage() {
   const router = useRouter();
   const { ingredients, deleteIngredient, refreshData } = useIngredients();
-  const { products } = useApp();
+  const { products, config } = useApp();
   const { mode, exitMode } = useMode();
 
   const [search, setSearch] = useState('');
@@ -123,6 +123,34 @@ export default function IngredientsPage() {
           <h1 className="text-lg font-semibold absolute left-1/2 -translate-x-1/2">原料库</h1>
 
           <div className="flex items-center gap-2">
+            {/* 管理按钮 */}
+            {isEditMode ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => router.push('/admin')}
+                className="h-10 w-10"
+              >
+                <Settings className="h-5 w-5" />
+              </Button>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => router.push('/admin')}
+                    className="h-10 w-10 opacity-50"
+                  >
+                    <Lock className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>需要进入编辑模式才能操作</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+            {/* 新建按钮 */}
             {isEditMode ? (
               <Button
                 variant="ghost"
@@ -166,9 +194,9 @@ export default function IngredientsPage() {
             <Combobox
               options={[
                 { value: 'all', label: '全部' },
-                ...CATEGORIES.map((cat) => ({
-                  value: cat,
-                  label: cat,
+                ...(config.ingredientCategories || []).filter((c) => c.enabled).map((cat) => ({
+                  value: cat.name,
+                  label: cat.name,
                 })),
               ]}
               value={categoryFilter}
