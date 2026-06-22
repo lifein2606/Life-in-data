@@ -134,6 +134,7 @@ export default function AdminPage() {
     const newMethods = config.methods.filter((method) => method.id !== id);
     await updateConfig({ ...config, methods: newMethods });
   };
+
   // 更新原料分类（异步）
   const updateIngredientCategory = async (id: string, updates: Partial<Category>) => {
     const newCats = config.ingredientCategories.map((cat) =>
@@ -149,6 +150,7 @@ export default function AdminPage() {
       enabled: true,
     };
     await updateConfig({ ...config, ingredientCategories: [...config.ingredientCategories, newCat] });
+    setEditingItem(newCat.id);
     setEditValue('新分类');
   };
 
@@ -156,7 +158,6 @@ export default function AdminPage() {
     const newCats = config.ingredientCategories.filter((cat) => cat.id !== id);
     await updateConfig({ ...config, ingredientCategories: newCats });
   };
-
 
   // 保存编辑（异步）
   const handleSaveEdit = async (type: 'spec' | 'brand' | 'category' | 'method' | 'ingredientCategory') => {
@@ -173,7 +174,7 @@ export default function AdminPage() {
         await updateCategory(editingItem, { name: editValue.trim() });
         break;
       case 'ingredientCategory':
-        await updateIngredientCategory(editId, { name: editValue });
+        await updateIngredientCategory(editingItem, { name: editValue.trim() });
         break;
       case 'method':
         await updateMethod(editingItem, { name: editValue.trim() });
@@ -220,9 +221,9 @@ export default function AdminPage() {
                 updateCategory(item.id, { enabled: checked });
                 break;
               case 'ingredientCategory':
-        await updateIngredientCategory(editId, { name: editValue });
-        break;
-      case 'method':
+                updateIngredientCategory(item.id, { enabled: checked });
+                break;
+              case 'method':
                 updateMethod(item.id, { enabled: checked });
                 break;
             }
@@ -279,9 +280,9 @@ export default function AdminPage() {
                     deleteCategory(item.id);
                     break;
                   case 'ingredientCategory':
-        await updateIngredientCategory(editId, { name: editValue });
-        break;
-      case 'method':
+                    deleteIngredientCategory(item.id);
+                    break;
+                  case 'method':
                     deleteMethod(item.id);
                     break;
                 }
@@ -425,6 +426,24 @@ export default function AdminPage() {
           </CardHeader>
           <CardContent className="space-y-2">
             {(config.categories || []).map((cat) => renderListItem(cat, 'category'))}
+          </CardContent>
+        </Card>
+
+        {/* 原料分类 */}
+        <Card className="glass-card">
+          <CardHeader className="pb-3 flex flex-row items-center justify-between">
+            <CardTitle className="text-base">原料分类</CardTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={addIngredientCategory}
+              className="h-8 w-8"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {(config.ingredientCategories || []).map((cat) => renderListItem(cat, 'ingredientCategory'))}
           </CardContent>
         </Card>
 
