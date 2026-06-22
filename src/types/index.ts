@@ -5,6 +5,7 @@ export interface GlobalConfig {
   brands: Brand[]; // 售卖品牌
   categories: Category[]; // 产品分类
   methods: Method[]; // 制作方法
+  ingredientCategories: Category[]; // 原料分类
 }
 
 export interface PackageSpec {
@@ -134,5 +135,13 @@ export const DEFAULT_CONFIG: GlobalConfig = {
     { id: 'method-12', name: '离心', hasLoss: true, enabled: true },
     { id: 'method-13', name: '奶洗', hasLoss: true, enabled: true },
     { id: 'method-14', name: '油洗', hasLoss: true, enabled: true },
+  ],
+  ingredientCategories: [
+    { id: 'icat-1', name: '基酒', enabled: true },
+    { id: 'icat-2', name: '糖浆', enabled: true },
+    { id: 'icat-3', name: '水果', enabled: true },
+    { id: 'icat-4', name: '调料', enabled: true },
+    { id: 'icat-5', name: '自制原料', enabled: true },
+    { id: 'icat-6', name: '其他', enabled: true },
   ],
 };
