@@ -7,13 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Combobox } from '@/components/ui/combobox';
 import {
   Tooltip,
@@ -22,7 +15,6 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { Plus, Search, Settings, ChevronRight, Trash2, Lock, Home } from 'lucide-react';
-import { Ingredient, IngredientCategory } from '@/types';
 
 // 原料分类从config读取，不再硬编码
 
@@ -66,16 +58,16 @@ export default function IngredientsPage() {
 
   const handleClick = (id: string) => {
     if (isEditMode) {
-      router.push(`/ingredients/${id}/edit`);
+      router.push(\`/ingredients/\${id}/edit\`);
     } else {
-      router.push(`/ingredients/${id}`);
+      router.push(\`/ingredients/\${id}\`);
     }
   };
 
   const handleEdit = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (isEditMode) {
-      router.push(`/ingredients/${id}/edit`);
+      router.push(\`/ingredients/\${id}/edit\`);
     }
   };
 
@@ -99,11 +91,13 @@ export default function IngredientsPage() {
     }
   };
 
-  const getSourceBadge = (source: 'purchase' | 'internal') => {
+  const getSourceBadge = (source: string) => {
+    const sourceConfig = (config.ingredientSources || []).find((s) => s.value === source);
+    const label = sourceConfig ? sourceConfig.name : source;
     if (source === 'purchase') {
-      return <Badge variant="secondary" className="text-xs">采购</Badge>;
+      return <Badge variant="secondary" className="text-xs">{label}</Badge>;
     }
-    return <Badge className="bg-[var(--primary)] text-[var(--primary-foreground)] text-xs">内部</Badge>;
+    return <Badge className="bg-[var(--primary)] text-[var(--primary-foreground)] text-xs">{label}</Badge>;
   };
 
   return (
@@ -123,12 +117,12 @@ export default function IngredientsPage() {
           <h1 className="text-lg font-semibold absolute left-1/2 -translate-x-1/2">原料库</h1>
 
           <div className="flex items-center gap-2">
-            {/* 管理按钮 */}
+            {/* 管理按钮 - 跳转到原料库专属设置页 */}
             {isEditMode ? (
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => router.push('/admin')}
+                onClick={() => router.push('/ingredients/admin')}
                 className="h-10 w-10"
               >
                 <Settings className="h-5 w-5" />
@@ -139,7 +133,7 @@ export default function IngredientsPage() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => router.push('/admin')}
+                    onClick={() => router.push('/ingredients/admin')}
                     className="h-10 w-10 opacity-50"
                   >
                     <Lock className="h-5 w-5" />
