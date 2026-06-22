@@ -773,7 +773,7 @@ export const costCalculator = {
   calculateMinUnitPrice(
     purchasePrice: number,
     purchaseSpec: string,
-    minUnit: 'g' | 'kg' | 'ml' | 'L'
+    minUnit: string
   ): number {
     const spec = purchaseSpec.toLowerCase();
     let totalAmount = 0;
@@ -831,7 +831,7 @@ export const costCalculator = {
     ingredientName: string;
     originalAmount: number;
     scaledAmount: number;
-    unit: 'g' | 'kg' | 'ml' | 'L';
+    unit: string;
     method: string;
     methodName: string;
     resultWeight?: number;
