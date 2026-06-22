@@ -21,7 +21,7 @@ import { PasswordDialog } from '@/components/password-dialog';
 import { ChevronLeft, Save } from 'lucide-react';
 import { Ingredient, IngredientCategory } from '@/types';
 
-const CATEGORIES: IngredientCategory[] = ['基酒', '糖浆', '水果', '调料', '其他'];
+// 原料分类从config读取
 
 export default function IngredientEditPage() {
   const router = useRouter();
@@ -30,7 +30,7 @@ export default function IngredientEditPage() {
   const isEdit = ingredientId !== 'new';
 
   const { ingredients, addIngredient, updateIngredient, refreshData } = useIngredients();
-  const { products } = useApp();
+  const { products, config } = useApp();
   const { isAuthenticated } = usePasswordAuth();
 
   const [showPasswordDialog, setShowPasswordDialog] = useState(!isAuthenticated && isEdit);
@@ -230,9 +230,9 @@ export default function IngredientEditPage() {
             <div>
               <Label>分类 *</Label>
               <Combobox
-                options={CATEGORIES.map((cat) => ({
-                  value: cat,
-                  label: cat,
+                options={(config.ingredientCategories || []).filter((c) => c.enabled).map((cat) => ({
+                  value: cat.name,
+                  label: cat.name,
                 }))}
                 value={formData.category}
                 onChange={(v) => setFormData({ ...formData, category: v as IngredientCategory })}
