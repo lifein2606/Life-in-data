@@ -25,7 +25,6 @@ export default function IngredientEditPage() {
   const [showPasswordDialog, setShowPasswordDialog] = useState(!isAuthenticated && isEdit);
   const [loading, setLoading] = useState(false);
 
-  // 表单数据
   const [formData, setFormData] = useState({
     name: '',
     category: '',
@@ -38,7 +37,6 @@ export default function IngredientEditPage() {
     relatedProductId: '',
   });
 
-  // 加载已有数据
   useEffect(() => {
     if (isEdit && isAuthenticated) {
       const ingredient = (ingredients || []).find((i) => i.id === ingredientId);
@@ -58,7 +56,6 @@ export default function IngredientEditPage() {
     }
   }, [isEdit, ingredientId, isAuthenticated, ingredients]);
 
-  // 成功验证后加载数据
   const handleAuthSuccess = () => {
     setShowPasswordDialog(false);
     const ingredient = (ingredients || []).find((i) => i.id === ingredientId);
@@ -77,14 +74,12 @@ export default function IngredientEditPage() {
     }
   };
 
-  // 计算最小单位单价预览
   const previewMinUnitPrice = useMemo(() => {
     if (!formData.purchaseSpec || formData.purchasePrice === 0) return 0;
     const spec = formData.purchaseSpec.toLowerCase();
     let totalAmount = 0;
     let unitMultiplier = 1;
 
-    // 确定单位转换倍数
     if (formData.minUnit === 'g') {
       if (spec.includes('kg')) unitMultiplier = 1000;
     } else if (formData.minUnit === 'ml') {
@@ -102,10 +97,8 @@ export default function IngredientEditPage() {
     return formData.purchasePrice / totalAmount;
   }, [formData.purchaseSpec, formData.purchasePrice, formData.minUnit]);
 
-  // 原料产品列表
   const ingredientProducts = (products || []).filter((p) => p.isIngredientProduct);
 
-  // 从config获取分类、来源、单位选项
   const categoryOptions = (config.ingredientCategories || []).filter((c) => c.enabled).map((cat) => ({
     value: cat.name,
     label: cat.name,
@@ -165,7 +158,6 @@ export default function IngredientEditPage() {
           relatedProductId: formData.relatedProductId,
         });
       }
-      // 显式刷新数据，确保列表页面显示最新数据
       await refreshData();
       router.push('/ingredients');
     } catch (error: any) {
@@ -174,7 +166,7 @@ export default function IngredientEditPage() {
         stack: error?.stack,
         formData: JSON.stringify(formData, null, 2),
       });
-      alert(\`保存失败: \${error?.message || '未知错误'}\`);
+      alert(`保存失败: ${error?.message || '未知错误'}`);
     } finally {
       setLoading(false);
     }
@@ -193,7 +185,6 @@ export default function IngredientEditPage() {
 
   return (
     <div className="content-area-no-nav">
-      {/* 顶部导航 */}
       <div className="mobile-header flex items-center justify-between px-4">
         <Button
           variant="ghost"
@@ -215,7 +206,6 @@ export default function IngredientEditPage() {
         </Button>
       </div>
 
-      {/* 表单 */}
       <div className="px-4 py-6 max-w-lg mx-auto">
         <Card className="glass-card">
           <CardHeader>
@@ -251,12 +241,11 @@ export default function IngredientEditPage() {
                 value={formData.minUnit}
                 onChange={(v) => {
                   const newUnit = v;
-                  // 同步更新 purchaseSpec 中的单位
                   const specNum = formData.purchaseSpec.replace(/[^\d.]/g, '');
                   setFormData({
                     ...formData,
                     minUnit: newUnit,
-                    purchaseSpec: specNum ? \`\${specNum}\${newUnit}\` : '',
+                    purchaseSpec: specNum ? `${specNum}${newUnit}` : '',
                     purchaseUnit: newUnit,
                   });
                 }}
@@ -284,7 +273,7 @@ export default function IngredientEditPage() {
                     const num = handleNumberInput(e.target.value, formData.purchaseSpec.replace(/[^\d.]/g, '')).replace(/[^\d.]/g, '');
                     setFormData({
                       ...formData,
-                      purchaseSpec: num ? \`\${num}\${formData.minUnit}\` : '',
+                      purchaseSpec: num ? `${num}${formData.minUnit}` : '',
                       purchaseUnit: formData.minUnit,
                     });
                   }}
@@ -312,8 +301,8 @@ export default function IngredientEditPage() {
                   onChange={(e) => {
                     const val = e.target.value;
                     if (/^\d*\.?\d*$/.test(val) || val === '') {
-                      setFormData({ 
-                        ...formData, 
+                      setFormData({
+                        ...formData,
                         purchasePriceInput: val,
                         purchasePrice: val ? parseFloat(val) : 0
                       });
