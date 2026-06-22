@@ -8,20 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Combobox } from '@/components/ui/combobox';
-import { Switch } from '@/components/ui/switch';
 import { PasswordDialog } from '@/components/password-dialog';
 import { ChevronLeft, Save } from 'lucide-react';
-import { Ingredient, IngredientCategory } from '@/types';
-
-// 原料分类从config读取
 
 export default function IngredientEditPage() {
   const router = useRouter();
@@ -39,13 +28,13 @@ export default function IngredientEditPage() {
   // 表单数据
   const [formData, setFormData] = useState({
     name: '',
-    category: '其他' as IngredientCategory,
+    category: '',
     purchaseSpec: '',
     purchasePrice: 0,
     purchasePriceInput: undefined as string | undefined,
     purchaseUnit: 'g',
-    minUnit: 'g' as 'g' | 'kg' | 'ml' | 'L',
-    source: 'purchase' as 'purchase' | 'internal',
+    minUnit: 'g',
+    source: 'purchase',
     relatedProductId: '',
   });
 
@@ -116,6 +105,22 @@ export default function IngredientEditPage() {
   // 原料产品列表
   const ingredientProducts = (products || []).filter((p) => p.isIngredientProduct);
 
+  // 从config获取分类、来源、单位选项
+  const categoryOptions = (config.ingredientCategories || []).filter((c) => c.enabled).map((cat) => ({
+    value: cat.name,
+    label: cat.name,
+  }));
+
+  const sourceOptions = (config.ingredientSources || []).filter((s) => s.enabled).map((src) => ({
+    value: src.value,
+    label: src.name,
+  }));
+
+  const unitOptions = (config.ingredientUnits || []).filter((u) => u.enabled).map((unit) => ({
+    value: unit.value,
+    label: unit.name,
+  }));
+
   const handleSubmit = async () => {
     if (!formData.name.trim()) {
       alert('请输入原料名称');
@@ -169,7 +174,7 @@ export default function IngredientEditPage() {
         stack: error?.stack,
         formData: JSON.stringify(formData, null, 2),
       });
-      alert(`保存失败: ${error?.message || '未知错误'}`);
+      alert(\`保存失败: \${error?.message || '未知错误'}\`);
     } finally {
       setLoading(false);
     }
@@ -230,12 +235,9 @@ export default function IngredientEditPage() {
             <div>
               <Label>分类 *</Label>
               <Combobox
-                options={(config.ingredientCategories || []).filter((c) => c.enabled).map((cat) => ({
-                  value: cat.name,
-                  label: cat.name,
-                }))}
+                options={categoryOptions}
                 value={formData.category}
-                onChange={(v) => setFormData({ ...formData, category: v as IngredientCategory })}
+                onChange={(v) => setFormData({ ...formData, category: v })}
                 placeholder="选择分类"
                 searchPlaceholder="搜索分类..."
                 className="bg-[var(--input)] mt-1"
@@ -245,21 +247,16 @@ export default function IngredientEditPage() {
             <div>
               <Label>最小单位</Label>
               <Combobox
-                options={[
-                  { value: 'g', label: '克' },
-                  { value: 'kg', label: '千克' },
-                  { value: 'ml', label: '毫升' },
-                  { value: 'L', label: '升 (L)' },
-                ]}
+                options={unitOptions}
                 value={formData.minUnit}
                 onChange={(v) => {
-                  const newUnit = v as 'g' | 'kg' | 'ml' | 'L';
+                  const newUnit = v;
                   // 同步更新 purchaseSpec 中的单位
                   const specNum = formData.purchaseSpec.replace(/[^\d.]/g, '');
                   setFormData({
                     ...formData,
                     minUnit: newUnit,
-                    purchaseSpec: specNum ? `${specNum}${newUnit}` : '',
+                    purchaseSpec: specNum ? \`\${specNum}\${newUnit}\` : '',
                     purchaseUnit: newUnit,
                   });
                 }}
@@ -287,7 +284,7 @@ export default function IngredientEditPage() {
                     const num = handleNumberInput(e.target.value, formData.purchaseSpec.replace(/[^\d.]/g, '')).replace(/[^\d.]/g, '');
                     setFormData({
                       ...formData,
-                      purchaseSpec: num ? `${num}${formData.minUnit}` : '',
+                      purchaseSpec: num ? \`\${num}\${formData.minUnit}\` : '',
                       purchaseUnit: formData.minUnit,
                     });
                   }}
@@ -314,7 +311,6 @@ export default function IngredientEditPage() {
                   value={formData.purchasePriceInput ?? formData.purchasePrice?.toString() ?? ''}
                   onChange={(e) => {
                     const val = e.target.value;
-                    // 允许输入数字、小数点和前导零
                     if (/^\d*\.?\d*$/.test(val) || val === '') {
                       setFormData({ 
                         ...formData, 
@@ -324,7 +320,6 @@ export default function IngredientEditPage() {
                     }
                   }}
                   onBlur={() => {
-                    // 失焦时清理输入，确保格式正确
                     const val = formData.purchasePriceInput;
                     if (val && !isNaN(parseFloat(val))) {
                       setFormData({
@@ -359,12 +354,9 @@ export default function IngredientEditPage() {
             <div className="flex items-center justify-between">
               <Label>来源类型</Label>
               <Combobox
-                options={[
-                  { value: 'purchase', label: '采购' },
-                  { value: 'internal', label: '内部生产' },
-                ]}
+                options={sourceOptions}
                 value={formData.source}
-                onChange={(v) => setFormData({ ...formData, source: v as 'purchase' | 'internal' })}
+                onChange={(v) => setFormData({ ...formData, source: v })}
                 placeholder="选择来源"
                 searchPlaceholder="搜索..."
                 className="w-[140px] bg-[var(--input)]"
