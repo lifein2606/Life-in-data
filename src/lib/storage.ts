@@ -158,6 +158,7 @@ export const configStorage = {
         brands: adaptConfigValue(configMap.get('brands'), DEFAULT_CONFIG.brands, 'brand-'),
         categories: adaptConfigValue(configMap.get('categories'), DEFAULT_CONFIG.categories, 'cat-'),
         methods: adaptConfigValue(configMap.get('methods'), DEFAULT_CONFIG.methods, 'method-'),
+        ingredientCategories: adaptConfigValue(configMap.get('ingredient_categories'), DEFAULT_CONFIG.ingredientCategories, 'icat-'),
       };
     } catch (error) {
       console.error('[configStorage.get] 获取配置失败:', error);
@@ -176,6 +177,7 @@ export const configStorage = {
       { key: 'brands', value: config.brands },
       { key: 'categories', value: config.categories },
       { key: 'methods', value: config.methods },
+      { key: 'ingredient_categories', value: config.ingredientCategories },
     ];
     
     for (const c of configs) {
