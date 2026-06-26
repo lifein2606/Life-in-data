@@ -255,6 +255,7 @@ export function useProducts() {
           minUnit: 'ml',
           source: 'internal',
           relatedProductId: newProduct.id,
+          abv: 0,
         });
       }
     }
@@ -310,6 +311,7 @@ export function useProducts() {
             minUnit: 'ml',
             source: 'internal',
             relatedProductId: id,
+            abv: 0,
           });
         }
       } else if (!nowIngredientProduct && wasIngredientProduct) {
@@ -346,6 +348,7 @@ export function useProducts() {
             minUnit: 'ml',
             source: 'internal',
             relatedProductId: id,
+            abv: 0,
           });
         }
       }
