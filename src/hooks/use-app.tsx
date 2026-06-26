@@ -166,7 +166,7 @@ export function useIngredients() {
   
   const addIngredient = async (data: Omit<Ingredient, 'id' | 'createdAt' | 'updatedAt' | 'minUnitPrice'>) => {
     const minUnitPrice = costCalculator.calculateMinUnitPrice(data.purchasePrice, data.purchaseSpec, data.minUnit);
-    const newIngredient = await ingredientStorage.add({ ...data, minUnitPrice });
+    const newIngredient = await ingredientStorage.create({ ...data, minUnitPrice });
     await refreshData();
     return newIngredient;
   };
@@ -224,7 +224,7 @@ export function useProducts() {
       cost: 0,
     };
     const cost = costCalculator.calculateProductCost(tempProduct, latestIngredients);
-    const newProduct = await productStorage.add({ ...data });
+    const newProduct = await productStorage.create({ ...data });
     
     // 如果产品勾选了'原料产品'，自动创建对应的原料（自制原料分类）
     if (data.isIngredientProduct && newProduct) {
@@ -245,7 +245,7 @@ export function useProducts() {
           relatedProductId: newProduct.id,
         });
       } else {
-        await ingredientStorage.add({
+        await ingredientStorage.create({
           name: data.name,
           category: '自制原料',
           purchaseSpec: `${data.standardOutput}ml`,
@@ -300,7 +300,7 @@ export function useProducts() {
             minUnitPrice: minUnitPrice,
           });
         } else {
-          await ingredientStorage.add({
+          await ingredientStorage.create({
             name: name,
             category: '自制原料',
             purchaseSpec: `${standardOutput}ml`,
@@ -336,7 +336,7 @@ export function useProducts() {
           const standardOutput = data.standardOutput !== undefined ? data.standardOutput : product.standardOutput;
           const name = data.name !== undefined ? data.name : product.name;
           const minUnitPrice = standardOutput > 0 ? currentCost / standardOutput : 0;
-          await ingredientStorage.add({
+          await ingredientStorage.create({
             name: name,
             category: '自制原料',
             purchaseSpec: `${standardOutput}ml`,
