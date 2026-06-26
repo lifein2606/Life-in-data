@@ -849,8 +849,8 @@ export const productStorage = {
       }
       if (updates.abv !== undefined || updates.abvManualOverride !== undefined) {
         const current = await productABVStorage.get(id);
-        const newAbv = updates.abv !== undefined ? updates.abv : current.value;
-        const newManual = updates.abvManualOverride !== undefined ? updates.abvManualOverride : current.manual;
+        const newAbv = updates.abv !== undefined ? updates.abv : (current?.value ?? 0);
+        const newManual = updates.abvManualOverride !== undefined ? updates.abvManualOverride : (current?.manual ?? false);
         await productABVStorage.set(id, newAbv, newManual);
       }
       
