@@ -690,7 +690,7 @@ export default function ProductEditPage() {
                                   popoverClassName="max-h-[150px]"
                                 />
                               </div>
-                              <div className="flex items-center gap-1 w-[100px]">
+                              <div className="flex items-center gap-1 w-[140px]">
                                 <Input
                                   type="text"
                                   value={numVal(`si-${si.id}`, si.inputAmount)}
@@ -699,7 +699,7 @@ export default function ProductEditPage() {
                                     setNumVal(`si-${si.id}`, val);
                                     updateStepIngredient(step.id, si.id, { inputAmount: parseFloat(val) || 0 });
                                   }}
-                                  className="bg-[var(--input)] number-font h-8 text-sm w-[50px]"
+                                  className="bg-[var(--input)] number-font h-8 text-sm w-[90px]"
                                 />
                                 <span className="text-xs">{si.inputUnit}</span>
                               </div>
