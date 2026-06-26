@@ -408,6 +408,7 @@ export default function ProductDetailPage() {
                 <span className="text-sm whitespace-nowrap">目标出品</span>
                 <Input
                   type="number"
+                  step="0.1"
                   value={targetOutput}
                   onChange={(e) => setTargetOutput(Number(handleNumberInput(e.target.value, String(targetOutput))))}
                   className="bg-[var(--input)] number-font w-[120px]"
@@ -523,6 +524,7 @@ export default function ProductDetailPage() {
                 {stockEditMode || isIngredientProduct ? (
                   <Input
                     type="number"
+                  step="0.1"
                     value={totalAvailable}
                     onChange={(e) => setTotalAvailable(Number(handleNumberInput(e.target.value, String(totalAvailable))))}
                     className="bg-[var(--input)] number-font w-[100px] h-8 text-right"
