@@ -26,47 +26,171 @@ const getSupabase = () => {
 
 
 
-// 配置格式适配器：兼容数据库中旧格式（简单字符串数组）和代码期望的新格式（对象数组）
-function adaptConfigValue<T extends { enabled?: boolean }>(
-  dbValue: any,
-  defaultValue: T[],
-  idPrefix: string
-): T[] {
-  if (!dbValue) return defaultValue;
-  if (!Array.isArray(dbValue)) return defaultValue;
-  // 已经是新格式（对象数组，第一个元素有 id 属性）
-  if (dbValue.length > 0 && typeof dbValue[0] === 'object' && dbValue[0] !== null && 'id' in dbValue[0]) {
-    return dbValue;
-  }
-  // 旧格式：字符串数组，转换为新格式
-  console.warn(`[adaptConfigValue] 检测到旧格式配置数据，正在转换: ${idPrefix}`);
-  return dbValue.map((item: any, index: number) => {
-    if (typeof item === 'string') {
-      const obj: any = { id: `${idPrefix}${index + 1}`, name: item, enabled: true };
-      return obj;
+// ========== Settings 表存储（用于存储 steps、abv 等扩展数据）==========
+
+// 设置表存储 - 通用读写函数
+const settingsStorage = {
+  // 读取单个设置
+  async get<T>(key: string): Promise<T | null> {
+    if (!isClient()) return null;
+    try {
+      const client = getSupabase();
+      const { data, error } = await client
+        .from('settings')
+        .select('*')
+        .eq('key', key)
+        .maybeSingle();
+      if (error) {
+        console.error(`[settingsStorage.get] 读取失败: ${error.message}`);
+        return null;
+      }
+      return data?.value as T ?? null;
+    } catch (error) {
+      console.error(`[settingsStorage.get] 读取失败:`, error);
+      return null;
     }
-    return item;
-  }) as T[];
-}
+  },
 
-// 不再使用 localStorage 作为降级方案
-// 所有数据必须持久化到 Supabase
+  // 写入单个设置（upsert）
+  async set(key: string, value: any): Promise<void> {
+    if (!isClient()) return;
+    try {
+      const client = getSupabase();
+      const { error } = await client
+        .from('settings')
+        .upsert(
+          { key, value },
+          { onConflict: 'key' }
+        );
+      if (error) {
+        console.error(`[settingsStorage.set] 写入失败: ${error.message}`);
+        throw new Error(`保存设置失败: ${error.message}`);
+      }
+      console.log(`[settingsStorage.set] 保存成功: ${key}`);
+    } catch (error) {
+      console.error(`[settingsStorage.set] 写入失败:`, error);
+      throw error;
+    }
+  },
 
-// 生成唯一ID
-export function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-}
+  // 删除单个设置
+  async delete(key: string): Promise<void> {
+    if (!isClient()) return;
+    try {
+      const client = getSupabase();
+      const { error } = await client
+        .from('settings')
+        .delete()
+        .eq('key', key);
+      if (error) {
+        console.error(`[settingsStorage.delete] 删除失败: ${error.message}`);
+      }
+      console.log(`[settingsStorage.delete] 删除成功: ${key}`);
+    } catch (error) {
+      console.error(`[settingsStorage.delete] 删除失败:`, error);
+    }
+  },
+};
 
-// 单位转换辅助函数
-export function convertToMl(amount: number, unit: string): number {
-  switch (unit) {
-    case 'ml': return amount;
-    case 'L': return amount * 1000;
-    case 'g': return amount;  // 近似 1g ≈ 1ml
-    case 'kg': return amount * 1000;  // 近似 1kg ≈ 1L
-    default: return amount;
+// 原料酒精度存储
+export const ingredientABVStorage = {
+  // 获取原料酒精度
+  async get(ingredientId: string): Promise<number> {
+    const abv = await settingsStorage.get<number>(`ingredient_abv_${ingredientId}`);
+    return abv ?? 0;
+  },
+
+  // 设置原料酒精度
+  async set(ingredientId: string, abv: number): Promise<void> {
+    if (abv > 0) {
+      await settingsStorage.set(`ingredient_abv_${ingredientId}`, abv);
+    } else {
+      await settingsStorage.delete(`ingredient_abv_${ingredientId}`);
+    }
+  },
+
+  // 删除原料酒精度
+  async delete(ingredientId: string): Promise<void> {
+    await settingsStorage.delete(`ingredient_abv_${ingredientId}`);
+  },
+};
+
+// 产品步骤数据存储
+export const productStepsStorage = {
+  // 获取产品步骤数据
+  async get(productId: string): Promise<ProductionStep[]> {
+    const steps = await settingsStorage.get<ProductionStep[]>(`product_steps_${productId}`);
+    return steps ?? [];
+  },
+
+  // 设置产品步骤数据
+  async set(productId: string, steps: ProductionStep[]): Promise<void> {
+    if (steps.length > 0) {
+      await settingsStorage.set(`product_steps_${productId}`, steps);
+    } else {
+      await settingsStorage.delete(`product_steps_${productId}`);
+    }
+  },
+
+  // 删除产品步骤数据
+  async delete(productId: string): Promise<void> {
+    await settingsStorage.delete(`product_steps_${productId}`);
+  },
+};
+
+// 产品酒精度存储
+export const productABVStorage = {
+  // 获取产品酒精度
+  async get(productId: string): Promise<{ value: number; manual: boolean } | null> {
+    const data = await settingsStorage.get<{ value: number; manual: boolean }>(`product_abv_${productId}`);
+    return data ?? null;
+  },
+
+  // 设置产品酒精度
+  async set(productId: string, value: number, manual: boolean): Promise<void> {
+    if (value > 0 || manual) {
+      await settingsStorage.set(`product_abv_${productId}`, { value, manual });
+    } else {
+      await settingsStorage.delete(`product_abv_${productId}`);
+    }
+  },
+
+  // 删除产品酒精度
+  async delete(productId: string): Promise<void> {
+    await settingsStorage.delete(`product_abv_${productId}`);
+  },
+};
+
+// 批量获取多个原料的 ABV
+export async function getIngredientABVs(ingredientIds: string[]): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  if (!isClient() || ingredientIds.length === 0) return result;
+
+  try {
+    const client = getSupabase();
+    const keys = ingredientIds.map(id => `ingredient_abv_${id}`);
+    const { data, error } = await client
+      .from('settings')
+      .select('*')
+      .in('key', keys);
+
+    if (error) {
+      console.error('[getIngredientABVs] 批量读取失败:', error.message);
+      return result;
+    }
+
+    for (const item of data || []) {
+      const id = item.key.replace('ingredient_abv_', '');
+      result.set(id, item.value as number);
+    }
+  } catch (error) {
+    console.error('[getIngredientABVs] 批量读取失败:', error);
   }
+
+  return result;
 }
+
+// ========== ABV 计算函数 ==========
 
 // ABV 计算公式
 // ABV = Σ(体积 × 度数) / 总体积
@@ -122,6 +246,48 @@ export function checkMissingABV(
   return { hasAlcoholic, allFilled };
 }
 
+// 单位转换辅助函数
+export function convertToMl(amount: number, unit: string): number {
+  switch (unit) {
+    case 'ml': return amount;
+    case 'L': return amount * 1000;
+    case 'g': return amount;  // 近似 1g ≈ 1ml
+    case 'kg': return amount * 1000;  // 近似 1kg ≈ 1L
+    default: return amount;
+  }
+}
+
+// 配置格式适配器：兼容数据库中旧格式（简单字符串数组）和代码期望的新格式（对象数组）
+function adaptConfigValue<T extends { enabled?: boolean }>(
+  dbValue: any,
+  defaultValue: T[],
+  idPrefix: string
+): T[] {
+  if (!dbValue) return defaultValue;
+  if (!Array.isArray(dbValue)) return defaultValue;
+  // 已经是新格式（对象数组，第一个元素有 id 属性）
+  if (dbValue.length > 0 && typeof dbValue[0] === 'object' && dbValue[0] !== null && 'id' in dbValue[0]) {
+    return dbValue;
+  }
+  // 旧格式：字符串数组，转换为新格式
+  console.warn(`[adaptConfigValue] 检测到旧格式配置数据，正在转换: ${idPrefix}`);
+  return dbValue.map((item: any, index: number) => {
+    if (typeof item === 'string') {
+      const obj: any = { id: `${idPrefix}${index + 1}`, name: item, enabled: true };
+      return obj;
+    }
+    return item;
+  }) as T[];
+}
+
+// 不再使用 localStorage 作为降级方案
+// 所有数据必须持久化到 Supabase
+
+// 生成唯一ID
+export function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
 // 数据库记录类型转换函数
 
 // 将旧的扁平 ProductIngredient[] 迁移为新的 steps 格式
@@ -162,16 +328,19 @@ function migrateIngredientsToSteps(ingredients: ProductIngredient[]): Production
 }
 
 // 产品记录转前端类型
-function productRecordToModel(record: any): Product {
+async function productRecordToModel(record: any): Promise<Product> {
   // 处理 ingredients 和 steps 数据
   let steps: ProductionStep[] = [];
   const ingredients: ProductIngredient[] = (record.ingredients || []).map((i: any) => ({
     ...i,
   }));
   
-  // 检查是否有 steps 字段
-  if (record.steps && Array.isArray(record.steps) && record.steps.length > 0) {
-    // 使用新的 steps 数据
+  // 尝试从 settings 表读取 steps 数据
+  const settingsSteps = await productStepsStorage.get(record.id);
+  if (settingsSteps.length > 0) {
+    steps = settingsSteps;
+  } else if (record.steps && Array.isArray(record.steps) && record.steps.length > 0) {
+    // 兼容旧的 steps 字段（数据库中直接存储的）
     steps = record.steps.map((s: any) => ({
       id: s.id,
       method: s.method,
@@ -193,6 +362,15 @@ function productRecordToModel(record: any): Product {
     steps = migrateIngredientsToSteps(ingredients);
   }
   
+  // 尝试从 settings 表读取 ABV 数据
+  let abv = record.abv || 0;
+  let abvManualOverride = record.abv_manual_override || false;
+  const settingsABV = await productABVStorage.get(record.id);
+  if (settingsABV) {
+    abv = settingsABV.value;
+    abvManualOverride = settingsABV.manual;
+  }
+  
   return {
     id: record.id,
     name: record.name,
@@ -204,8 +382,8 @@ function productRecordToModel(record: any): Product {
     packageSpecs: record.package_specs || [],
     cost: 0, // 成本需要实时计算
     isIngredientProduct: record.is_ingredient_product,
-    abv: record.abv || 0,
-    abvManualOverride: record.abv_manual_override || false,
+    abv: abv,
+    abvManualOverride: abvManualOverride,
     createdAt: new Date(record.created_at).getTime(),
     updatedAt: new Date(record.updated_at).getTime(),
   };
@@ -229,7 +407,14 @@ function productModelToRecord(product: Omit<Product, 'id' | 'createdAt' | 'updat
 }
 
 // 原料记录转前端类型
-function ingredientRecordToModel(record: any): Ingredient {
+async function ingredientRecordToModel(record: any): Promise<Ingredient> {
+  // 尝试从 settings 表读取 ABV 数据
+  let abv = parseFloat(record.abv || '0');
+  const settingsABV = await ingredientABVStorage.get(record.id);
+  if (settingsABV > 0) {
+    abv = settingsABV;
+  }
+  
   return {
     id: record.id,
     name: record.name,
@@ -240,7 +425,7 @@ function ingredientRecordToModel(record: any): Ingredient {
     minUnitPrice: parseFloat(record.unit_price || '0'),
     minUnit: record.min_unit,
     source: record.source,
-    abv: parseFloat(record.abv || '0'),
+    abv: abv,
     relatedProductId: record.linked_product_id,
     createdAt: new Date(record.created_at).getTime(),
     updatedAt: new Date(record.updated_at).getTime(),
@@ -381,7 +566,13 @@ export const ingredientStorage = {
         throw new Error(`获取原料失败: ${error.message}`);
       }
       console.log('[ingredientStorage.getAll] 成功获取原料，数量:', data?.length || 0);
-      return (data || []).map(ingredientRecordToModel);
+      
+      // 转换为前端类型（异步，需要处理每个记录）
+      const ingredients: Ingredient[] = [];
+      for (const record of data || []) {
+        ingredients.push(await ingredientRecordToModel(record));
+      }
+      return ingredients;
     } catch (error) {
       console.error('[ingredientStorage.getAll] 获取原料失败:', error);
       return [];
@@ -404,7 +595,7 @@ export const ingredientStorage = {
         console.error('[ingredientStorage.getById] Supabase 查询错误:', error.message);
         throw new Error(`获取原料失败: ${error.message}`);
       }
-      return data ? ingredientRecordToModel(data) : null;
+      return data ? await ingredientRecordToModel(data) : null;
     } catch (error) {
       console.error('[ingredientStorage.getById] 获取原料失败:', error);
       return null;
@@ -429,7 +620,13 @@ export const ingredientStorage = {
         throw new Error(`创建原料失败: ${error.message}`);
       }
       console.log('[ingredientStorage.create] 成功创建原料:', data.id);
-      return ingredientRecordToModel(data);
+      
+      // 将 ABV 保存到 settings 表
+      if (ingredient.abv > 0) {
+        await ingredientABVStorage.set(data.id, ingredient.abv);
+      }
+      
+      return await ingredientRecordToModel(data);
     } catch (error) {
       console.error('[ingredientStorage.create] 创建原料失败:', error);
       throw error;
@@ -469,7 +666,13 @@ export const ingredientStorage = {
         throw new Error(`更新原料失败: ${error.message}`);
       }
       console.log('[ingredientStorage.update] 成功更新原料:', id);
-      return data ? ingredientRecordToModel(data) : null;
+      
+      // 将 ABV 保存到 settings 表
+      if (updates.abv !== undefined) {
+        await ingredientABVStorage.set(id, updates.abv);
+      }
+      
+      return data ? await ingredientRecordToModel(data) : null;
     } catch (error) {
       console.error('[ingredientStorage.update] 更新原料失败:', error);
       throw error;
@@ -491,6 +694,10 @@ export const ingredientStorage = {
         console.error('[ingredientStorage.delete] Supabase 删除错误:', error.message);
         throw new Error(`删除原料失败: ${error.message}`);
       }
+      
+      // 删除 settings 中的 ABV 数据
+      await ingredientABVStorage.delete(id);
+      
       console.log('[ingredientStorage.delete] 成功删除原料:', id);
       return true;
     } catch (error) {
@@ -515,6 +722,9 @@ export const ingredientStorage = {
       if (error) {
         console.error('[ingredientStorage.updateLinkedABV] 更新 ABV 失败:', error.message);
       }
+      
+      // 同时更新 settings 表
+      await ingredientABVStorage.set(ingredientId, abv);
     } catch (error) {
       console.error('[ingredientStorage.updateLinkedABV] 更新 ABV 失败:', error);
     }
@@ -540,7 +750,13 @@ export const productStorage = {
         throw new Error(`获取产品失败: ${error.message}`);
       }
       console.log('[productStorage.getAll] 成功获取产品，数量:', data?.length || 0);
-      return (data || []).map(productRecordToModel);
+      
+      // 转换为前端类型（异步）
+      const products: Product[] = [];
+      for (const record of data || []) {
+        products.push(await productRecordToModel(record));
+      }
+      return products;
     } catch (error) {
       console.error('[productStorage.getAll] 获取产品失败:', error);
       return [];
@@ -563,7 +779,7 @@ export const productStorage = {
         console.error('[productStorage.getById] Supabase 查询错误:', error.message);
         throw new Error(`获取产品失败: ${error.message}`);
       }
-      return data ? productRecordToModel(data) : null;
+      return data ? await productRecordToModel(data) : null;
     } catch (error) {
       console.error('[productStorage.getById] 获取产品失败:', error);
       return null;
@@ -589,6 +805,12 @@ export const productStorage = {
       }
       console.log('[productStorage.create] 成功创建产品:', data.id);
       
+      // 将 steps 保存到 settings 表
+      await productStepsStorage.set(data.id, product.steps || []);
+      
+      // 将 ABV 保存到 settings 表
+      await productABVStorage.set(data.id, product.abv || 0, product.abvManualOverride || false);
+      
       // 如果是原料产品，同步更新关联原料的 ABV
       if (product.isIngredientProduct && product.abv > 0) {
         // 查找关联的原料
@@ -599,7 +821,7 @@ export const productStorage = {
         }
       }
       
-      return productRecordToModel(data);
+      return await productRecordToModel(data);
     } catch (error) {
       console.error('[productStorage.create] 创建产品失败:', error);
       throw error;
@@ -638,8 +860,21 @@ export const productStorage = {
       }
       console.log('[productStorage.update] 成功更新产品:', id);
       
+      // 将 steps 保存到 settings 表
+      if (updates.steps !== undefined) {
+        await productStepsStorage.set(id, updates.steps);
+      }
+      
+      // 将 ABV 保存到 settings 表
+      if (updates.abv !== undefined || updates.abvManualOverride !== undefined) {
+        const current = await productABVStorage.get(id);
+        const newAbv = updates.abv ?? current?.value ?? 0;
+        const newManual = updates.abvManualOverride ?? current?.manual ?? false;
+        await productABVStorage.set(id, newAbv, newManual);
+      }
+      
       // 如果是原料产品，同步更新关联原料的 ABV
-      const updatedProduct = productRecordToModel(data);
+      const updatedProduct = await productRecordToModel(data);
       if (updatedProduct.isIngredientProduct && updatedProduct.abv > 0) {
         const ingredients = await ingredientStorage.getAll();
         const linkedIngredient = ingredients.find(i => i.relatedProductId === id);
@@ -648,7 +883,7 @@ export const productStorage = {
         }
       }
       
-      return data ? productRecordToModel(data) : null;
+      return data ? await productRecordToModel(data) : null;
     } catch (error) {
       console.error('[productStorage.update] 更新产品失败:', error);
       throw error;
@@ -682,6 +917,11 @@ export const productStorage = {
         console.error('[productStorage.delete] Supabase 删除错误:', error.message);
         throw new Error(`删除产品失败: ${error.message}`);
       }
+      
+      // 删除 settings 中的 steps 和 abv 数据
+      await productStepsStorage.delete(id);
+      await productABVStorage.delete(id);
+      
       console.log('[productStorage.delete] 成功删除产品:', id);
       return true;
     } catch (error) {
@@ -707,7 +947,13 @@ export const productStorage = {
         console.error('[productStorage.getIngredientProducts] Supabase 查询错误:', error.message);
         throw new Error(`获取原料产品失败: ${error.message}`);
       }
-      return (data || []).map(productRecordToModel);
+      
+      // 转换为前端类型（异步）
+      const products: Product[] = [];
+      for (const record of data || []) {
+        products.push(await productRecordToModel(record));
+      }
+      return products;
     } catch (error) {
       console.error('[productStorage.getIngredientProducts] 获取原料产品失败:', error);
       return [];
