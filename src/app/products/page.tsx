@@ -175,6 +175,11 @@ export default function ProductsPage() {
                   出品量：{product.standardOutput}ml
                 </div>
               )}
+              {product.abv > 0 && (
+                <div className="mt-1 text-xs text-[var(--primary)]">
+                  {product.abv.toFixed(1)}% ABV
+                </div>
+              )}
               {stock && (
                 <div className="mt-2 flex items-center gap-2">
                   <span className="text-xs text-[var(--muted-foreground)]">可用：</span>
@@ -259,12 +264,37 @@ export default function ProductsPage() {
                 出品：{product.standardOutput}ml
               </div>
             )}
+            {product.abv > 0 && (
+              <div className="text-[10px] text-[var(--primary)]">
+                {product.abv.toFixed(1)}% ABV
+              </div>
+            )}
             {stock && (
               <div className="text-[10px] font-medium text-[var(--primary)]">
                 库存：{stock.totalAvailable}ml
               </div>
             )}
           </div>
+          {isEditMode && (
+            <div className="flex items-center justify-end gap-1 mt-2 pt-2 border-t border-[var(--border)]" onClick={(e) => e.stopPropagation()}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-[var(--muted-foreground)] hover:text-[var(--primary)]"
+                onClick={() => router.push(`/products/${product.id}/edit`)}
+              >
+                <Edit2 className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-[var(--muted-foreground)] hover:text-[var(--destructive)]"
+                onClick={(e) => handleDelete(product.id, e)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     );
