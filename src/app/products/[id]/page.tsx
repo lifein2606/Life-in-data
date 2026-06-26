@@ -31,6 +31,12 @@ export default function ProductDetailPage() {
   const [targetOutput, setTargetOutput] = useState<number>(0);
   const [stockEditMode, setStockEditMode] = useState(false);
   const [totalAvailable, setTotalAvailable] = useState<number>(0);
+  // 数字输入显示值缓存（保留小数点输入中间状态）
+  const [numDisplays, setNumDisplays] = useState<Record<string, string>>({});
+  const numVal = (key: string, fallback: number | undefined | null) =>
+    key in numDisplays ? numDisplays[key] : (fallback != null && fallback !== 0 ? String(fallback) : '');
+  const setNumVal = (key: string, val: string) =>
+    setNumDisplays(prev => ({ ...prev, [key]: val }));
   const [packageCounts, setPackageCounts] = useState<Record<string, number>>({});
 
   // 是否处于编辑模式
@@ -184,13 +190,18 @@ export default function ProductDetailPage() {
               )}
             </div>
             <div className="space-y-2 pl-4">
-              {step.ingredients.map((si) => (
+              {step.ingredients.map((si) => {
+                const ing = (ingredients || []).find(i => i.id === si.ingredientId);
+                return (
                 <div
                   key={si.id}
                   className="flex items-center justify-between py-2 px-3 rounded-lg bg-[var(--muted)]"
                 >
                   <div className="flex-1 min-w-0">
                     <span className="text-sm truncate">{si.ingredientName}</span>
+                    {ing && ing.abv > 0 && (
+                      <span className="text-xs text-[var(--primary)] ml-1.5">{ing.abv}%vol</span>
+                    )}
                     <div className="flex items-center gap-2 mt-1">
                       {step.lockStandard && step.fixedInput && (
                         <span className="text-xs text-[var(--muted-foreground)]">
@@ -210,7 +221,8 @@ export default function ProductDetailPage() {
                     )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         );
@@ -407,12 +419,14 @@ export default function ProductDetailPage() {
               <div className="flex items-center gap-2">
                 <span className="text-sm whitespace-nowrap">目标出品</span>
                 <Input
-                  type="number"
-                  step="0.1"
-                  value={targetOutput}
-                  onChange={(e) => setTargetOutput(Number(handleNumberInput(e.target.value, String(targetOutput))))}
+                  type="text"
+                  value={numVal('targetOutput', targetOutput)}
+                  onChange={(e) => {
+                    const val = handleNumberInput(e.target.value, numVal('targetOutput', targetOutput));
+                    setNumVal('targetOutput', val);
+                    setTargetOutput(Number(val) || 0);
+                  }}
                   className="bg-[var(--input)] number-font w-[120px]"
-                  min={0}
                 />
                 <span className="text-sm">ml</span>
               </div>
@@ -426,6 +440,12 @@ export default function ProductDetailPage() {
                     >
                       <div className="flex-1 min-w-0">
                         <span className="text-sm truncate">{si.ingredientName}</span>
+                        {(() => {
+                          const ing = (ingredients || []).find(i => i.id === si.ingredientId);
+                          return ing && ing.abv > 0 ? (
+                            <span className="text-xs text-[var(--primary)] ml-1.5">{ing.abv}%vol</span>
+                          ) : null;
+                        })()}
                         <div className="text-xs text-[var(--muted-foreground)] mt-1">
                           {si.methodName}
                           {si.resultWeight !== undefined && si.scaledAmount > 0 && (() => {
@@ -523,12 +543,14 @@ export default function ProductDetailPage() {
                 <span className="text-sm">总可用量</span>
                 {stockEditMode || isIngredientProduct ? (
                   <Input
-                    type="number"
-                  step="0.1"
-                    value={totalAvailable}
-                    onChange={(e) => setTotalAvailable(Number(handleNumberInput(e.target.value, String(totalAvailable))))}
+                    type="text"
+                    value={numVal('totalAvailable', totalAvailable)}
+                    onChange={(e) => {
+                      const val = handleNumberInput(e.target.value, numVal('totalAvailable', totalAvailable));
+                      setNumVal('totalAvailable', val);
+                      setTotalAvailable(Number(val) || 0);
+                    }}
                     className="bg-[var(--input)] number-font w-[100px] h-8 text-right"
-                    min={0}
                   />
                 ) : (
                   <span className="number-font">{totalAvailable}ml</span>

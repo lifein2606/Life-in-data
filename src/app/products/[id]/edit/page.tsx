@@ -36,6 +36,12 @@ export default function ProductEditPage() {
 
   const [showPasswordDialog, setShowPasswordDialog] = useState(!isAuthenticated && isEdit);
   const [loading, setLoading] = useState(false);
+  // 数字输入显示值缓存（保留小数点输入中间状态）
+  const [numDisplays, setNumDisplays] = useState<Record<string, string>>({});
+  const numVal = (key: string, fallback: number | undefined | null) =>
+    key in numDisplays ? numDisplays[key] : (fallback != null && fallback !== 0 ? String(fallback) : '');
+  const setNumVal = (key: string, val: string) =>
+    setNumDisplays(prev => ({ ...prev, [key]: val }));
 
   // 表单数据
   const [formData, setFormData] = useState({
@@ -514,9 +520,10 @@ export default function ProductEditPage() {
               <div className="flex items-center gap-2">
                 <Input
                   type="text"
-                  value={formData.standardOutput}
+                  value={numVal('standardOutput', formData.standardOutput)}
                   onChange={(e) => {
-                    const val = handleNumberInput(e.target.value, String(formData.standardOutput));
+                    const val = handleNumberInput(e.target.value, numVal('standardOutput', formData.standardOutput));
+                    setNumVal('standardOutput', val);
                     setFormData({ ...formData, standardOutput: parseFloat(val) || 0 });
                   }}
                   className="bg-[var(--input)] number-font w-[100px]"
@@ -566,7 +573,7 @@ export default function ProductEditPage() {
               {abvStatus.hasAlcoholic && !abvStatus.allFilled && (
                 <div className="flex items-center gap-1 mt-2 text-xs text-[var(--warning)]">
                   <AlertCircle className="h-3 w-3" />
-                  部分原料未填写酒精度，计算结果可能不准确
+                  部分原料未填写酒精度，将作为稀释成分，计算结果可能不准确
                 </div>
               )}
               <div className="mt-2">
@@ -664,7 +671,7 @@ export default function ProductEditPage() {
                                 <Combobox
                                   options={ingredients.filter((ing) => ing.id).map((ing) => ({
                                     value: ing.id,
-                                    label: `${ing.name} (${ing.category})`,
+                                    label: `${ing.name} (${ing.category})${ing.abv > 0 ? ` · ${ing.abv}%vol` : ''}`,
                                   }))}
                                   value={si.ingredientId}
                                   onChange={(v) => {
@@ -684,9 +691,10 @@ export default function ProductEditPage() {
                               <div className="flex items-center gap-1 w-[100px]">
                                 <Input
                                   type="text"
-                                  value={si.inputAmount}
+                                  value={numVal(`si-${si.id}`, si.inputAmount)}
                                   onChange={(e) => {
-                                    const val = handleNumberInput(e.target.value, String(si.inputAmount));
+                                    const val = handleNumberInput(e.target.value, numVal(`si-${si.id}`, si.inputAmount));
+                                    setNumVal(`si-${si.id}`, val);
                                     updateStepIngredient(step.id, si.id, { inputAmount: parseFloat(val) || 0 });
                                   }}
                                   className="bg-[var(--input)] number-font h-8 text-sm w-[50px]"
@@ -722,10 +730,11 @@ export default function ProductEditPage() {
                             <Label className="text-xs">结果液重</Label>
                             <Input
                               type="text"
-                              value={step.resultWeight || ''}
+                              value={numVal(`rw-${step.id}`, step.resultWeight)}
                               onChange={(e) => {
-                                const val = handleNumberInput(e.target.value, String(step.resultWeight || 0));
-                                updateStep(step.id, { resultWeight: parseFloat(val) || undefined });
+                                const val = handleNumberInput(e.target.value, numVal(`rw-${step.id}`, step.resultWeight));
+                                setNumVal(`rw-${step.id}`, val);
+                                updateStep(step.id, { resultWeight: val ? parseFloat(val) || undefined : undefined });
                               }}
                               className="bg-[var(--input)] number-font mt-1 h-9"
                             />
@@ -761,10 +770,11 @@ export default function ProductEditPage() {
                             <Label className="text-xs">固定投入量</Label>
                             <Input
                               type="text"
-                              value={step.fixedInput || ''}
+                              value={numVal(`fi-${step.id}`, step.fixedInput)}
                               onChange={(e) => {
-                                const val = handleNumberInput(e.target.value, String(step.fixedInput || 0));
-                                updateStep(step.id, { fixedInput: parseFloat(val) || undefined });
+                                const val = handleNumberInput(e.target.value, numVal(`fi-${step.id}`, step.fixedInput));
+                                setNumVal(`fi-${step.id}`, val);
+                                updateStep(step.id, { fixedInput: val ? parseFloat(val) || undefined : undefined });
                               }}
                               className="bg-[var(--input)] number-font mt-1 h-9"
                             />
@@ -774,10 +784,11 @@ export default function ProductEditPage() {
                               <Label className="text-xs">固定结果液重</Label>
                               <Input
                                 type="text"
-                                value={step.fixedOutput || ''}
+                                value={numVal(`fo-${step.id}`, step.fixedOutput)}
                                 onChange={(e) => {
-                                  const val = handleNumberInput(e.target.value, String(step.fixedOutput || 0));
-                                  updateStep(step.id, { fixedOutput: parseFloat(val) || undefined });
+                                  const val = handleNumberInput(e.target.value, numVal(`fo-${step.id}`, step.fixedOutput));
+                                  setNumVal(`fo-${step.id}`, val);
+                                  updateStep(step.id, { fixedOutput: val ? parseFloat(val) || undefined : undefined });
                                 }}
                                 className="bg-[var(--input)] number-font mt-1 h-9"
                               />
