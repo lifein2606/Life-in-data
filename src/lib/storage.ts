@@ -398,18 +398,15 @@ function productModelToRecord(product: Omit<Product, 'id' | 'createdAt' | 'updat
     is_ingredient_product: product.isIngredientProduct,
     total_output_ml: product.standardOutput,
     ingredients: product.ingredients,
-    steps: product.steps,
     package_specs: product.packageSpecs,
     total_stock_ml: 0,
-    abv: product.abv || 0,
-    abv_manual_override: product.abvManualOverride || false,
   };
 }
 
 // 原料记录转前端类型
 async function ingredientRecordToModel(record: any): Promise<Ingredient> {
-  // 尝试从 settings 表读取 ABV 数据
-  let abv = parseFloat(record.abv || '0');
+  // 从 settings 表读取 ABV 数据（ingredients 表没有 abv 列）
+  let abv = 0;
   const settingsABV = await ingredientABVStorage.get(record.id);
   if (settingsABV > 0) {
     abv = settingsABV;
@@ -444,7 +441,6 @@ function ingredientModelToRecord(ingredient: Omit<Ingredient, 'id' | 'createdAt'
     purchase_price: (ingredient.purchasePrice || 0).toString(),
     unit_price: (ingredient.minUnitPrice || 0).toString(),
     linked_product_id: ingredient.relatedProductId && ingredient.relatedProductId.trim() !== '' ? ingredient.relatedProductId : null,
-    abv: ingredient.abv || 0,
   };
   console.log('[ingredientModelToRecord] 输出记录:', JSON.stringify(record, null, 2));
   return record;
@@ -653,7 +649,10 @@ export const ingredientStorage = {
       if (updates.relatedProductId !== undefined) {
         updateRecord.linked_product_id = updates.relatedProductId && updates.relatedProductId.trim() !== '' ? updates.relatedProductId : null;
       }
-      if (updates.abv !== undefined) updateRecord.abv = updates.abv;
+      // ABV 存储在 settings 表中，不写入 ingredients 表
+      if (updates.abv !== undefined) {
+        await ingredientABVStorage.set(id, updates.abv);
+      }
       
       const { data, error } = await client
         .from('ingredients')
@@ -842,11 +841,18 @@ export const productStorage = {
       if (updates.brands !== undefined) updateRecord.brands = updates.brands;
       if (updates.standardOutput !== undefined) updateRecord.total_output_ml = updates.standardOutput;
       if (updates.ingredients !== undefined) updateRecord.ingredients = updates.ingredients;
-      if (updates.steps !== undefined) updateRecord.steps = updates.steps;
       if (updates.packageSpecs !== undefined) updateRecord.package_specs = updates.packageSpecs;
       if (updates.isIngredientProduct !== undefined) updateRecord.is_ingredient_product = updates.isIngredientProduct;
-      if (updates.abv !== undefined) updateRecord.abv = updates.abv;
-      if (updates.abvManualOverride !== undefined) updateRecord.abv_manual_override = updates.abvManualOverride;
+      // steps 和 ABV 存储在 settings 表中，不写入 products 表
+      if (updates.steps !== undefined) {
+        await productStepsStorage.set(id, updates.steps);
+      }
+      if (updates.abv !== undefined || updates.abvManualOverride !== undefined) {
+        const current = await productABVStorage.get(id);
+        const newAbv = updates.abv !== undefined ? updates.abv : current.value;
+        const newManual = updates.abvManualOverride !== undefined ? updates.abvManualOverride : current.manual;
+        await productABVStorage.set(id, newAbv, newManual);
+      }
       
       const { data, error } = await client
         .from('products')
