@@ -11,7 +11,8 @@ export function handleNumberInput(
 ): string {
   const currentStr = currentValue.toString();
   if (inputValue === '') return '';
-  if (/^\d*\.?\d*$/.test(inputValue)) {
+  // 允许最多1位小数
+  if (/^\d*\.?\d{0,1}$/.test(inputValue)) {
     if ((currentValue === '0' || currentValue === 0 || currentValue === '') && inputValue.length === 1) {
       if (inputValue !== '0') {
         return inputValue;
