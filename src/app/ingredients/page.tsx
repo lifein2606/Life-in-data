@@ -14,7 +14,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Plus, Search, Settings, ChevronRight, Trash2, Lock, Home, List, LayoutGrid } from 'lucide-react';
+import { Plus, Search, Settings, ChevronRight, Trash2, Edit2, Lock, Home, List, LayoutGrid } from 'lucide-react';
 
 export default function IngredientsPage() {
   const router = useRouter();
@@ -186,6 +186,26 @@ export default function IngredientsPage() {
             ¥{ingredient.minUnitPrice.toFixed(4)}/{ingredient.minUnit}
           </div>
         </div>
+        {isEditMode && (
+          <div className="flex items-center justify-end gap-1 mt-2 pt-2 border-t border-[var(--border)]" onClick={(e) => e.stopPropagation()}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-[var(--muted-foreground)] hover:text-[var(--primary)]"
+              onClick={() => router.push(`/ingredients/${ingredient.id}/edit`)}
+            >
+              <Edit2 className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-[var(--muted-foreground)] hover:text-[var(--destructive)]"
+              onClick={() => handleDelete(ingredient.id)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
