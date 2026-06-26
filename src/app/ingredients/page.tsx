@@ -78,11 +78,7 @@ export default function IngredientsPage() {
   };
 
   const handleClick = (id: string) => {
-    if (isEditMode) {
-      router.push(`/ingredients/${id}/edit`);
-    } else {
-      router.push(`/ingredients/${id}`);
-    }
+    router.push(`/ingredients/${id}`);
   };
 
   const handleDelete = async (id: string) => {
