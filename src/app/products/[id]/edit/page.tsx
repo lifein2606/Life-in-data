@@ -559,7 +559,7 @@ export default function ProductEditPage() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="number-font text-lg text-[var(--primary)]">
-                  {displayABV > 0 ? `${displayABV.toFixed(1)}%` : '0%'}
+                  {displayABV > 0 ? `${displayABV.toFixed(2)}%` : '0%'}
                 </span>
                 {formData.abvManualOverride && (
                   <span className="text-xs text-[var(--muted-foreground)]">(已手动设定)</span>
@@ -578,13 +578,15 @@ export default function ProductEditPage() {
               )}
               <div className="mt-2">
                 <Input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="100"
-                  value={formData.abv}
-                  onChange={(e) => handleManualABVChange(parseFloat(e.target.value) || 0)}
+                  type="text"
+                  value={numVal('manualAbv', formData.abv)}
+                  onChange={(e) => {
+                    const val = handleNumberInput(e.target.value, numVal('manualAbv', formData.abv));
+                    setNumVal('manualAbv', val);
+                    handleManualABVChange(parseFloat(val) || 0);
+                  }}
                   className="bg-[var(--input)] number-font w-[100px] h-8 text-sm"
+                  placeholder="0.00"
                 />
               </div>
             </div>

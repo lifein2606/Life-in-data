@@ -219,7 +219,7 @@ export function calculateProductABV(
   }
   
   if (totalVolume === 0) return 0;
-  return (totalAlcohol / totalVolume) * 100;
+  return Math.round((totalAlcohol / totalVolume) * 100 * 100) / 100;
 }
 
 // 检查是否有原料未填写酒精度

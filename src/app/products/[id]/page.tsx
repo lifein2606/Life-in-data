@@ -400,7 +400,7 @@ export default function ProductDetailPage() {
                 <div className="flex items-center gap-4 mt-2">
                   <span className="text-sm">酒精度</span>
                   <span className="number-font text-[var(--primary)] font-medium">
-                    {product.abv.toFixed(1)}%
+                    {product.abv.toFixed(2)}%
                   </span>
                   {product.abvManualOverride && (
                     <span className="text-xs text-[var(--muted-foreground)]">(手动设定)</span>

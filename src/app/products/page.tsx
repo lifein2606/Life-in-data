@@ -177,7 +177,7 @@ export default function ProductsPage() {
               )}
               {product.abv > 0 && (
                 <div className="mt-1 text-xs text-[var(--primary)]">
-                  {product.abv.toFixed(1)}% ABV
+                  {product.abv.toFixed(2)}% ABV
                 </div>
               )}
               {stock && (
@@ -266,7 +266,7 @@ export default function ProductsPage() {
             )}
             {product.abv > 0 && (
               <div className="text-[10px] text-[var(--primary)]">
-                {product.abv.toFixed(1)}% ABV
+                {product.abv.toFixed(2)}% ABV
               </div>
             )}
             {stock && (
