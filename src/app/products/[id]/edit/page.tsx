@@ -517,7 +517,7 @@ export default function ProductEditPage() {
                   value={formData.standardOutput}
                   onChange={(e) => {
                     const val = handleNumberInput(e.target.value, String(formData.standardOutput));
-                    setFormData({ ...formData, standardOutput: parseInt(val) || 0 });
+                    setFormData({ ...formData, standardOutput: parseFloat(val) || 0 });
                   }}
                   className="bg-[var(--input)] number-font w-[100px]"
                 />
