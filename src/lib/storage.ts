@@ -10,6 +10,8 @@ import {
   Category,
   Method,
   ProductIngredient,
+  ProductionStep,
+  StepIngredient,
   IngredientSource,
   IngredientUnit,
 } from '@/types';
@@ -20,7 +22,7 @@ const getSupabase = () => {
     throw new Error('Supabase operations can only be performed on the client side');
   }
   return getSupabaseClient();
-};
+}
 
 
 
@@ -55,23 +57,155 @@ export function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
+// 单位转换辅助函数
+export function convertToMl(amount: number, unit: string): number {
+  switch (unit) {
+    case 'ml': return amount;
+    case 'L': return amount * 1000;
+    case 'g': return amount;  // 近似 1g ≈ 1ml
+    case 'kg': return amount * 1000;  // 近似 1kg ≈ 1L
+    default: return amount;
+  }
+}
+
+// ABV 计算公式
+// ABV = Σ(体积 × 度数) / 总体积
+// 对于有损耗的步骤：用投入的原料参与计算（酒精在加工过程中保留，损耗的是水和其他成分）
+// 总体积 = 所有步骤所有原料的投入量之和（转换为ml）
+// 只计算 abv > 0 的原料贡献的酒精量
+export function calculateProductABV(
+  steps: ProductionStep[],
+  ingredients: Ingredient[]
+): number {
+  let totalAlcohol = 0;  // 总酒精量（ml）
+  let totalVolume = 0;   // 总体积（ml）
+  
+  for (const step of steps) {
+    for (const si of step.ingredients) {
+      // 将用量统一转换为 ml（如果是 g 则近似 1g ≈ 1ml）
+      const volumeMl = convertToMl(si.inputAmount, si.inputUnit);
+      totalVolume += volumeMl;
+      
+      // 查找该原料的 ABV
+      const ingredient = ingredients.find(i => i.id === si.ingredientId);
+      if (ingredient && ingredient.abv > 0) {
+        totalAlcohol += volumeMl * (ingredient.abv / 100);
+      }
+    }
+  }
+  
+  if (totalVolume === 0) return 0;
+  return (totalAlcohol / totalVolume) * 100;
+}
+
+// 检查是否有原料未填写酒精度
+export function checkMissingABV(
+  steps: ProductionStep[],
+  ingredients: Ingredient[]
+): { hasAlcoholic: boolean; allFilled: boolean } {
+  let hasAlcoholic = false;
+  let allFilled = true;
+  
+  for (const step of steps) {
+    for (const si of step.ingredients) {
+      const ingredient = ingredients.find(i => i.id === si.ingredientId);
+      if (ingredient && ingredient.abv > 0) {
+        hasAlcoholic = true;
+      }
+      // 如果有酒精原料但未填写ABV
+      if (ingredient && ingredient.abv === 0 && (si.inputUnit === 'ml' || si.inputUnit === 'L')) {
+        allFilled = false;
+      }
+    }
+  }
+  
+  return { hasAlcoholic, allFilled };
+}
+
 // 数据库记录类型转换函数
+
+// 将旧的扁平 ProductIngredient[] 迁移为新的 steps 格式
+function migrateIngredientsToSteps(ingredients: ProductIngredient[]): ProductionStep[] {
+  const methodGroups = new Map<string, ProductIngredient[]>();
+  
+  // 按 method 分组
+  for (const ing of ingredients) {
+    const existing = methodGroups.get(ing.method) || [];
+    existing.push(ing);
+    methodGroups.set(ing.method, existing);
+  }
+  
+  // 转换为 steps 格式
+  const steps: ProductionStep[] = [];
+  for (const [method, methodIngredients] of methodGroups) {
+    if (methodIngredients.length > 0) {
+      steps.push({
+        id: generateId(),
+        method: method,
+        methodName: methodIngredients[0].methodName,
+        ingredients: methodIngredients.map(i => ({
+          id: i.id,
+          ingredientId: i.ingredientId,
+          ingredientName: i.ingredientName,
+          inputAmount: i.inputAmount,
+          inputUnit: i.inputUnit,
+        })),
+        resultWeight: methodIngredients[0].resultWeight,
+        lockStandard: methodIngredients[0].lockStandard,
+        fixedInput: methodIngredients[0].fixedInput,
+        fixedOutput: methodIngredients[0].fixedOutput,
+      });
+    }
+  }
+  
+  return steps;
+}
 
 // 产品记录转前端类型
 function productRecordToModel(record: any): Product {
+  // 处理 ingredients 和 steps 数据
+  let steps: ProductionStep[] = [];
+  const ingredients: ProductIngredient[] = (record.ingredients || []).map((i: any) => ({
+    ...i,
+  }));
+  
+  // 检查是否有 steps 字段
+  if (record.steps && Array.isArray(record.steps) && record.steps.length > 0) {
+    // 使用新的 steps 数据
+    steps = record.steps.map((s: any) => ({
+      id: s.id,
+      method: s.method,
+      methodName: s.methodName,
+      ingredients: (s.ingredients || []).map((si: any) => ({
+        id: si.id,
+        ingredientId: si.ingredientId,
+        ingredientName: si.ingredientName,
+        inputAmount: si.inputAmount,
+        inputUnit: si.inputUnit,
+      })),
+      resultWeight: s.resultWeight,
+      lockStandard: s.lockStandard || false,
+      fixedInput: s.fixedInput,
+      fixedOutput: s.fixedOutput,
+    }));
+  } else if (ingredients.length > 0) {
+    // 旧数据：将 ingredients 迁移为 steps
+    steps = migrateIngredientsToSteps(ingredients);
+  }
+  
   return {
     id: record.id,
     name: record.name,
     category: record.category,
     brands: record.brands || [],
     standardOutput: record.total_output_ml,
-    ingredients: (record.ingredients || []).map((i: any) => ({
-      ...i,
-      // 保持字段名不变
-    })),
+    ingredients: ingredients,
+    steps: steps,
     packageSpecs: record.package_specs || [],
     cost: 0, // 成本需要实时计算
     isIngredientProduct: record.is_ingredient_product,
+    abv: record.abv || 0,
+    abvManualOverride: record.abv_manual_override || false,
     createdAt: new Date(record.created_at).getTime(),
     updatedAt: new Date(record.updated_at).getTime(),
   };
@@ -86,8 +220,11 @@ function productModelToRecord(product: Omit<Product, 'id' | 'createdAt' | 'updat
     is_ingredient_product: product.isIngredientProduct,
     total_output_ml: product.standardOutput,
     ingredients: product.ingredients,
+    steps: product.steps,
     package_specs: product.packageSpecs,
     total_stock_ml: 0,
+    abv: product.abv || 0,
+    abv_manual_override: product.abvManualOverride || false,
   };
 }
 
@@ -103,6 +240,7 @@ function ingredientRecordToModel(record: any): Ingredient {
     minUnitPrice: parseFloat(record.unit_price || '0'),
     minUnit: record.min_unit,
     source: record.source,
+    abv: parseFloat(record.abv || '0'),
     relatedProductId: record.linked_product_id,
     createdAt: new Date(record.created_at).getTime(),
     updatedAt: new Date(record.updated_at).getTime(),
@@ -121,6 +259,7 @@ function ingredientModelToRecord(ingredient: Omit<Ingredient, 'id' | 'createdAt'
     purchase_price: (ingredient.purchasePrice || 0).toString(),
     unit_price: (ingredient.minUnitPrice || 0).toString(),
     linked_product_id: ingredient.relatedProductId && ingredient.relatedProductId.trim() !== '' ? ingredient.relatedProductId : null,
+    abv: ingredient.abv || 0,
   };
   console.log('[ingredientModelToRecord] 输出记录:', JSON.stringify(record, null, 2));
   return record;
@@ -272,68 +411,56 @@ export const ingredientStorage = {
     }
   },
 
-  async add(ingredient: Omit<Ingredient, 'id' | 'createdAt' | 'updatedAt'>): Promise<Ingredient> {
-    console.log('[ingredientStorage.add] 开始添加原料');
-    
+  async create(ingredient: Omit<Ingredient, 'id' | 'createdAt' | 'updatedAt'>): Promise<Ingredient> {
     if (!isClient()) {
-      throw new Error('[ingredientStorage.add] 必须在客户端执行');
+      throw new Error('Supabase 不可用，无法创建原料');
     }
 
     try {
       const client = getSupabase();
       const record = ingredientModelToRecord(ingredient);
-      
-      console.log('[ingredientStorage.add] 准备插入记录:', JSON.stringify(record, null, 2));
-      
       const { data, error } = await client
         .from('ingredients')
         .insert(record)
         .select()
-        .single();
-      
+        .maybeSingle();
       if (error) {
-        console.error('[ingredientStorage.add] Supabase 插入错误:', {
-          message: error.message,
-          code: error.code,
-          details: error.details,
-          hint: error.hint,
-        });
-        throw new Error(`添加原料失败: ${error.message} (code: ${error.code})`);
+        console.error('[ingredientStorage.create] Supabase 插入错误:', error.message);
+        throw new Error(`创建原料失败: ${error.message}`);
       }
-      
-      console.log('[ingredientStorage.add] 成功添加原料:', data?.id);
+      console.log('[ingredientStorage.create] 成功创建原料:', data.id);
       return ingredientRecordToModel(data);
-    } catch (error: any) {
-      console.error('[ingredientStorage.add] 添加原料失败:', {
-        message: error?.message,
-        stack: error?.stack,
-        ingredient: JSON.stringify(ingredient, null, 2),
-      });
+    } catch (error) {
+      console.error('[ingredientStorage.create] 创建原料失败:', error);
       throw error;
     }
   },
 
-  async update(id: string, updates: Partial<Omit<Ingredient, 'id' | 'createdAt'>>): Promise<Ingredient | null> {
+  async update(id: string, updates: Partial<Omit<Ingredient, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Ingredient | null> {
     if (!isClient()) {
       throw new Error('Supabase 不可用，无法更新原料');
     }
 
     try {
       const client = getSupabase();
-      const record: any = {};
+      const updateRecord: any = {};
       
-      if (updates.name !== undefined) record.name = updates.name;
-      if (updates.category !== undefined) record.category = updates.category;
-      if (updates.purchaseSpec !== undefined) record.purchase_spec = updates.purchaseSpec;
-      if (updates.purchasePrice !== undefined) record.purchase_price = updates.purchasePrice.toString();
-      if (updates.minUnitPrice !== undefined) record.unit_price = updates.minUnitPrice.toString();
-      if (updates.minUnit !== undefined) record.min_unit = updates.minUnit;
-      if (updates.source !== undefined) record.source = updates.source;
-      if (updates.relatedProductId !== undefined) record.linked_product_id = updates.relatedProductId && updates.relatedProductId.trim() !== '' ? updates.relatedProductId : null;
+      if (updates.name !== undefined) updateRecord.name = updates.name;
+      if (updates.category !== undefined) updateRecord.category = updates.category;
+      if (updates.purchaseSpec !== undefined) updateRecord.purchase_spec = updates.purchaseSpec;
+      if (updates.purchasePrice !== undefined) updateRecord.purchase_price = updates.purchasePrice.toString();
+      if (updates.purchaseUnit !== undefined) updateRecord.min_unit = updates.purchaseUnit;
+      if (updates.minUnit !== undefined) updateRecord.min_unit = updates.minUnit;
+      if (updates.minUnitPrice !== undefined) updateRecord.unit_price = updates.minUnitPrice.toString();
+      if (updates.source !== undefined) updateRecord.source = updates.source;
+      if (updates.relatedProductId !== undefined) {
+        updateRecord.linked_product_id = updates.relatedProductId && updates.relatedProductId.trim() !== '' ? updates.relatedProductId : null;
+      }
+      if (updates.abv !== undefined) updateRecord.abv = updates.abv;
       
       const { data, error } = await client
         .from('ingredients')
-        .update(record)
+        .update(updateRecord)
         .eq('id', id)
         .select()
         .maybeSingle();
@@ -372,27 +499,41 @@ export const ingredientStorage = {
     }
   },
 
-  // 检查原料是否被产品使用
-  isUsedInProducts(id: string, products: Product[]): boolean {
-    return products.some((p) => p.ingredients.some((i) => i.ingredientId === id));
+  // 更新关联原料的 ABV（当原料产品的 ABV 变更时）
+  async updateLinkedABV(ingredientId: string, abv: number): Promise<void> {
+    if (!isClient()) {
+      return;
+    }
+
+    try {
+      const client = getSupabase();
+      const { error } = await client
+        .from('ingredients')
+        .update({ abv: abv })
+        .eq('id', ingredientId)
+        .eq('source', 'internal');
+      if (error) {
+        console.error('[ingredientStorage.updateLinkedABV] 更新 ABV 失败:', error.message);
+      }
+    } catch (error) {
+      console.error('[ingredientStorage.updateLinkedABV] 更新 ABV 失败:', error);
+    }
   },
 };
 
 // 产品存储
 export const productStorage = {
   async getAll(): Promise<Product[]> {
-    // 必须在客户端执行
     if (!isClient()) {
       console.warn('[productStorage.getAll] SSR 环境，返回空数组');
       return [];
     }
 
-
     try {
       const client = getSupabase();
       const { data, error } = await client
-      .from('products')
-      .select('*')
+        .from('products')
+        .select('*')
         .order('created_at', { ascending: false });
       if (error) {
         console.error('[productStorage.getAll] Supabase 查询错误:', error.message);
@@ -429,9 +570,9 @@ export const productStorage = {
     }
   },
 
-  async add(product: Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'cost'>): Promise<Product> {
+  async create(product: Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'cost'>): Promise<Product> {
     if (!isClient()) {
-      throw new Error('Supabase 不可用，无法添加产品');
+      throw new Error('Supabase 不可用，无法创建产品');
     }
 
     try {
@@ -441,39 +582,53 @@ export const productStorage = {
         .from('products')
         .insert(record)
         .select()
-        .single();
+        .maybeSingle();
       if (error) {
-        console.error('[productStorage.add] Supabase 插入错误:', error.message);
-        throw new Error(`添加产品失败: ${error.message}`);
+        console.error('[productStorage.create] Supabase 插入错误:', error.message);
+        throw new Error(`创建产品失败: ${error.message}`);
       }
-      console.log('[productStorage.add] 成功添加产品:', data?.id);
+      console.log('[productStorage.create] 成功创建产品:', data.id);
+      
+      // 如果是原料产品，同步更新关联原料的 ABV
+      if (product.isIngredientProduct && product.abv > 0) {
+        // 查找关联的原料
+        const ingredients = await ingredientStorage.getAll();
+        const linkedIngredient = ingredients.find(i => i.relatedProductId === data.id);
+        if (linkedIngredient) {
+          await ingredientStorage.updateLinkedABV(linkedIngredient.id, product.abv);
+        }
+      }
+      
       return productRecordToModel(data);
     } catch (error) {
-      console.error('[productStorage.add] 添加产品失败:', error);
+      console.error('[productStorage.create] 创建产品失败:', error);
       throw error;
     }
   },
 
-  async update(id: string, updates: Partial<Omit<Product, 'id' | 'createdAt'>>): Promise<Product | null> {
+  async update(id: string, updates: Partial<Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'cost'>>): Promise<Product | null> {
     if (!isClient()) {
       throw new Error('Supabase 不可用，无法更新产品');
     }
 
     try {
       const client = getSupabase();
-      const record: any = {};
+      const updateRecord: any = {};
       
-      if (updates.name !== undefined) record.name = updates.name;
-      if (updates.category !== undefined) record.category = updates.category;
-      if (updates.brands !== undefined) record.brands = updates.brands;
-      if (updates.standardOutput !== undefined) record.total_output_ml = updates.standardOutput;
-      if (updates.ingredients !== undefined) record.ingredients = updates.ingredients;
-      if (updates.packageSpecs !== undefined) record.package_specs = updates.packageSpecs;
-      if (updates.isIngredientProduct !== undefined) record.is_ingredient_product = updates.isIngredientProduct;
+      if (updates.name !== undefined) updateRecord.name = updates.name;
+      if (updates.category !== undefined) updateRecord.category = updates.category;
+      if (updates.brands !== undefined) updateRecord.brands = updates.brands;
+      if (updates.standardOutput !== undefined) updateRecord.total_output_ml = updates.standardOutput;
+      if (updates.ingredients !== undefined) updateRecord.ingredients = updates.ingredients;
+      if (updates.steps !== undefined) updateRecord.steps = updates.steps;
+      if (updates.packageSpecs !== undefined) updateRecord.package_specs = updates.packageSpecs;
+      if (updates.isIngredientProduct !== undefined) updateRecord.is_ingredient_product = updates.isIngredientProduct;
+      if (updates.abv !== undefined) updateRecord.abv = updates.abv;
+      if (updates.abvManualOverride !== undefined) updateRecord.abv_manual_override = updates.abvManualOverride;
       
       const { data, error } = await client
         .from('products')
-        .update(record)
+        .update(updateRecord)
         .eq('id', id)
         .select()
         .maybeSingle();
@@ -482,6 +637,17 @@ export const productStorage = {
         throw new Error(`更新产品失败: ${error.message}`);
       }
       console.log('[productStorage.update] 成功更新产品:', id);
+      
+      // 如果是原料产品，同步更新关联原料的 ABV
+      const updatedProduct = productRecordToModel(data);
+      if (updatedProduct.isIngredientProduct && updatedProduct.abv > 0) {
+        const ingredients = await ingredientStorage.getAll();
+        const linkedIngredient = ingredients.find(i => i.relatedProductId === id);
+        if (linkedIngredient) {
+          await ingredientStorage.updateLinkedABV(linkedIngredient.id, updatedProduct.abv);
+        }
+      }
+      
       return data ? productRecordToModel(data) : null;
     } catch (error) {
       console.error('[productStorage.update] 更新产品失败:', error);
@@ -767,7 +933,7 @@ export const stockStorage = {
   },
 };
 
-// 成本计算工具（保持不变）
+// 成本计算工具
 export const costCalculator = {
   // 计算原料最小单位单价
   calculateMinUnitPrice(
@@ -798,19 +964,31 @@ export const costCalculator = {
     return purchasePrice / totalAmount;
   },
 
-  // 计算产品成本
+  // 计算产品成本（优先使用 steps，降级使用 ingredients）
   calculateProductCost(
     product: Product,
     ingredients: Ingredient[]
   ): number {
     let totalCost = 0;
-
-    for (const pi of product.ingredients) {
-      const ingredient = ingredients.find((i) => i.id === pi.ingredientId);
-      if (!ingredient) continue;
-
-      const cost = pi.inputAmount * ingredient.minUnitPrice;
-      totalCost += cost;
+    
+    // 优先使用 steps
+    if (product.steps && product.steps.length > 0) {
+      for (const step of product.steps) {
+        for (const si of step.ingredients) {
+          const ingredient = ingredients.find((i) => i.id === si.ingredientId);
+          if (!ingredient) continue;
+          const cost = si.inputAmount * ingredient.minUnitPrice;
+          totalCost += cost;
+        }
+      }
+    } else {
+      // 降级使用 ingredients
+      for (const pi of product.ingredients) {
+        const ingredient = ingredients.find((i) => i.id === pi.ingredientId);
+        if (!ingredient) continue;
+        const cost = pi.inputAmount * ingredient.minUnitPrice;
+        totalCost += cost;
+      }
     }
 
     return totalCost;
@@ -822,7 +1000,7 @@ export const costCalculator = {
     return ((inputAmount - resultWeight) / inputAmount) * 100;
   },
 
-  // 按目标出品量换算原料用量
+  // 按目标出品量换算原料用量（基于 steps 结构）
   scaleIngredients(
     product: Product,
     targetOutput: number
@@ -839,7 +1017,51 @@ export const costCalculator = {
     operationCount?: number;
   }> {
     const scale = targetOutput / product.standardOutput;
-
+    
+    // 优先使用 steps
+    if (product.steps && product.steps.length > 0) {
+      const result: Array<{
+        ingredientId: string;
+        ingredientName: string;
+        originalAmount: number;
+        scaledAmount: number;
+        unit: string;
+        method: string;
+        methodName: string;
+        resultWeight?: number;
+        scaledResultWeight?: number;
+        operationCount?: number;
+      }> = [];
+      
+      for (const step of product.steps) {
+        for (const si of step.ingredients) {
+          const item: any = {
+            ingredientId: si.ingredientId,
+            ingredientName: si.ingredientName,
+            originalAmount: si.inputAmount,
+            scaledAmount: si.inputAmount * scale,
+            unit: si.inputUnit,
+            method: step.method,
+            methodName: step.methodName,
+          };
+          
+          if (step.resultWeight !== undefined) {
+            item.resultWeight = step.resultWeight;
+            item.scaledResultWeight = step.resultWeight * scale;
+          }
+          
+          if (step.lockStandard && step.fixedInput && step.fixedOutput) {
+            item.operationCount = Math.ceil(item.scaledAmount / step.fixedInput);
+          }
+          
+          result.push(item);
+        }
+      }
+      
+      return result;
+    }
+    
+    // 降级使用 ingredients
     return product.ingredients.map((pi) => {
       const result: any = {
         ingredientId: pi.ingredientId,
@@ -865,7 +1087,7 @@ export const costCalculator = {
   },
 };
 
-// 循环依赖检测（保持不变）
+// 循环依赖检测
 export const dependencyChecker = {
   hasCircularDependency(
     productId: string,
@@ -887,9 +1109,26 @@ export const dependencyChecker = {
       );
 
       for (const dp of dependentProducts) {
+        // 同时检查 steps 和 ingredients
+        const ingredientIds = new Set<string>();
+        
+        // 从 steps 获取
+        if (dp.steps && dp.steps.length > 0) {
+          for (const step of dp.steps) {
+            for (const si of step.ingredients) {
+              ingredientIds.add(si.ingredientId);
+            }
+          }
+        }
+        
+        // 从 ingredients 获取（向后兼容）
         for (const i of dp.ingredients) {
-          if (i.ingredientId === productId) return true;
-          queue.push(i.ingredientId);
+          ingredientIds.add(i.ingredientId);
+        }
+        
+        for (const ingId of ingredientIds) {
+          if (ingId === productId) return true;
+          queue.push(ingId);
         }
       }
     }

@@ -21,7 +21,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Plus, Search, Settings, ChevronRight, Edit2, Lock, Home, Trash2 } from 'lucide-react';
+import { Plus, Search, Settings, ChevronRight, Edit2, Lock, Home, Trash2, List, LayoutGrid } from 'lucide-react';
 
 export default function ProductsPage() {
   const router = useRouter();
@@ -31,6 +31,9 @@ export default function ProductsPage() {
 
   const [search, setSearch] = useState('');
   const [showIngredientProducts, setShowIngredientProducts] = useState(false);
+  
+  // 视图模式状态（默认列表模式）
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
 
   // 每次页面挂载或获得焦点时刷新数据，确保编辑后列表同步
   useEffect(() => {
@@ -39,6 +42,20 @@ export default function ProductsPage() {
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
   }, [refreshData]);
+
+  // 从 localStorage 读取视图偏好
+  useEffect(() => {
+    const savedMode = localStorage.getItem('products-view-mode');
+    if (savedMode === 'list' || savedMode === 'grid') {
+      setViewMode(savedMode);
+    }
+  }, []);
+
+  // 保存视图偏好到 localStorage
+  const handleViewModeChange = (mode: 'list' | 'grid') => {
+    setViewMode(mode);
+    localStorage.setItem('products-view-mode', mode);
+  };
 
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [brandFilter, setBrandFilter] = useState<string>('all');
@@ -124,6 +141,134 @@ export default function ProductsPage() {
   const enabledCategories = config.categories.filter((c) => c.enabled);
   // 启用的品牌
   const enabledBrands = config.brands.filter((b) => b.enabled);
+
+  // 渲染列表模式下的产品卡片
+  const renderListCard = (product: any) => {
+    const stock = getProductStock(product.id);
+    return (
+      <Card
+        key={product.id}
+        className="glass-card group"
+      >
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div
+              className="flex-1 min-w-0 cursor-pointer"
+              onClick={() => handleView(product.id)}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="font-medium truncate">{product.name}</h3>
+                {product.isIngredientProduct && (
+                  <Badge variant="outline" className="text-xs border-[var(--primary)] text-[var(--primary)]">
+                    原料产品
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+                <Badge variant="outline" className="text-xs">{getCategoryName(product.category)}</Badge>
+                {product.brands.length > 0 && (
+                  <span className="truncate">{getBrandNames(product.brands)}</span>
+                )}
+              </div>
+              {product.standardOutput && (
+                <div className="mt-1 text-xs text-[var(--muted-foreground)]">
+                  出品量：{product.standardOutput}ml
+                </div>
+              )}
+              {stock && (
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-xs text-[var(--muted-foreground)]">可用：</span>
+                  <span className="text-xs font-medium text-[var(--primary)] number-font">
+                    {stock.totalAvailable}ml
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              {isEditMode && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-[var(--muted-foreground)] hover:text-[var(--destructive)]"
+                  onClick={(e) => handleDelete(product.id, e)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
+              {isEditMode ? (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-[var(--muted-foreground)] hover:text-[var(--primary)]"
+                  onClick={(e) => handleEdit(product.id, e)}
+                >
+                  <Edit2 className="h-4 w-4" />
+                </Button>
+              ) : (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 opacity-50"
+                      onClick={(e) => handleEdit(product.id, e)}
+                    >
+                      <Lock className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>需要进入编辑模式才能操作</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              <ChevronRight className="h-5 w-5 text-[var(--muted-foreground)]" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  // 渲染网格模式下的产品卡片
+  const renderGridCard = (product: any) => {
+    const stock = getProductStock(product.id);
+    return (
+      <Card
+        key={product.id}
+        className="glass-card group cursor-pointer overflow-hidden"
+        onClick={() => handleView(product.id)}
+      >
+        <CardContent className="p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <h3 className="font-medium text-sm truncate flex-1">{product.name}</h3>
+            {product.isIngredientProduct && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-[var(--primary)] text-[var(--primary)]">
+                原料
+              </Badge>
+            )}
+          </div>
+          <div className="space-y-1">
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{getCategoryName(product.category)}</Badge>
+            {product.brands.length > 0 && (
+              <div className="text-[10px] text-[var(--muted-foreground)] truncate">
+                {getBrandNames(product.brands)}
+              </div>
+            )}
+            {product.standardOutput > 0 && (
+              <div className="text-[10px] text-[var(--muted-foreground)]">
+                出品：{product.standardOutput}ml
+              </div>
+            )}
+            {stock && (
+              <div className="text-[10px] font-medium text-[var(--primary)]">
+                库存：{stock.totalAvailable}ml
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
 
   return (
     <TooltipProvider>
@@ -246,105 +391,42 @@ export default function ProductsPage() {
                 onChange={(e) => setShowIngredientProducts(e.target.checked)}
                 className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]"
               />
-              显示原料产品
+              原料
             </label>
+            {/* 视图切换按钮 */}
+            <div className="flex items-center border border-[var(--border)] rounded-md overflow-hidden">
+              <button
+                type="button"
+                onClick={() => handleViewModeChange('list')}
+                className={`p-1.5 ${viewMode === 'list' ? 'bg-[var(--primary)] text-[var(--primary-foreground)]' : 'bg-transparent text-[var(--muted-foreground)] hover:bg-[var(--accent)]'}`}
+                title="列表视图"
+              >
+                <List className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleViewModeChange('grid')}
+                className={`p-1.5 ${viewMode === 'grid' ? 'bg-[var(--primary)] text-[var(--primary-foreground)]' : 'bg-transparent text-[var(--muted-foreground)] hover:bg-[var(--accent)]'}`}
+                title="网格视图"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* 产品列表 */}
-        <div className="px-4 space-y-3">
+        {/* 产品列表/网格 */}
+        <div className={viewMode === 'grid' ? 'px-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3' : 'px-4 space-y-3'}>
           {filteredProducts.length === 0 ? (
-            <div className="text-center py-12 text-[var(--muted-foreground)]">
+            <div className={viewMode === 'grid' ? 'col-span-full text-center py-12 text-[var(--muted-foreground)]' : 'text-center py-12 text-[var(--muted-foreground)]'}>
               {search || categoryFilter !== 'all' || brandFilter !== 'all' || !showIngredientProducts
                 ? '未找到匹配的产品'
                 : '暂无产品，点击右上角 + 添加'}
             </div>
           ) : (
-            filteredProducts.map((product) => {
-              const stock = getProductStock(product.id);
-              return (
-                <Card
-                  key={product.id}
-                  className="glass-card group"
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div
-                        className="flex-1 min-w-0 cursor-pointer"
-                        onClick={() => handleView(product.id)}
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-medium truncate">{product.name}</h3>
-                          {product.isIngredientProduct && (
-                            <Badge variant="outline" className="text-xs border-[var(--primary)] text-[var(--primary)]">
-                              原料产品
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
-                          <Badge variant="outline" className="text-xs">{getCategoryName(product.category)}</Badge>
-                          {product.brands.length > 0 && (
-                            <span className="truncate">{getBrandNames(product.brands)}</span>
-                          )}
-                        </div>
-                        {product.standardOutput && (
-                          <div className="mt-1 text-xs text-[var(--muted-foreground)]">
-                            出品量：{product.standardOutput}ml
-                          </div>
-                        )}
-                        {stock && (
-                          <div className="mt-2 flex items-center gap-2">
-                            <span className="text-xs text-[var(--muted-foreground)]">可用：</span>
-                            <span className="text-xs font-medium text-[var(--primary)] number-font">
-                              {stock.totalAvailable}ml
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {isEditMode && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-[var(--muted-foreground)] hover:text-[var(--destructive)]"
-                            onClick={(e) => handleDelete(product.id, e)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                        {isEditMode ? (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-[var(--muted-foreground)] hover:text-[var(--primary)]"
-                            onClick={(e) => handleEdit(product.id, e)}
-                          >
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                        ) : (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 opacity-50"
-                                onClick={(e) => handleEdit(product.id, e)}
-                              >
-                                <Lock className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>需要进入编辑模式才能操作</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
-                        <ChevronRight className="h-5 w-5 text-[var(--muted-foreground)]" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })
+            filteredProducts.map((product) =>
+              viewMode === 'grid' ? renderGridCard(product) : renderListCard(product)
+            )
           )}
         </div>
       </div>

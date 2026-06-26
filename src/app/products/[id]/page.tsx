@@ -16,7 +16,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { ChevronLeft, Edit2, Plus, Minus, Lock } from 'lucide-react';
-import { PackageStock } from '@/types';
+import { PackageStock, ProductionStep } from '@/types';
 import { costCalculator } from '@/lib/storage';
 
 export default function ProductDetailPage() {
@@ -156,6 +156,146 @@ export default function ProductDetailPage() {
   // 获取原料产品包装规格（原料产品只显示散量）
   const isIngredientProduct = product?.isIngredientProduct;
 
+  // 按步骤分组显示（用于详情页）
+  const renderStepsView = () => {
+    if (!product) return null;
+
+    // 优先使用 steps
+    if (product.steps && product.steps.length > 0) {
+      return product.steps.map((step, stepIndex) => {
+        const totalInput = step.ingredients.reduce((sum, si) => sum + si.inputAmount, 0);
+        const lossRatio = step.resultWeight && totalInput > 0
+          ? ((totalInput - step.resultWeight) / totalInput * 100)
+          : undefined;
+
+        return (
+          <div key={step.id} className="space-y-2">
+            <div className="flex items-center gap-2 py-2">
+              <Badge variant="outline" className="text-xs">
+                步骤 {stepIndex + 1}
+              </Badge>
+              <Badge className="bg-[var(--primary)] text-[var(--primary-foreground)] text-xs">
+                {step.methodName}
+              </Badge>
+              {lossRatio !== undefined && (
+                <span className="text-xs text-[var(--warning)]">
+                  损耗 {lossRatio.toFixed(1)}%
+                </span>
+              )}
+            </div>
+            <div className="space-y-2 pl-4">
+              {step.ingredients.map((si) => (
+                <div
+                  key={si.id}
+                  className="flex items-center justify-between py-2 px-3 rounded-lg bg-[var(--muted)]"
+                >
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm truncate">{si.ingredientName}</span>
+                    <div className="flex items-center gap-2 mt-1">
+                      {step.lockStandard && step.fixedInput && (
+                        <span className="text-xs text-[var(--muted-foreground)]">
+                          固定: {step.fixedInput}{si.inputUnit}→{step.fixedOutput}g
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="number-font text-sm">
+                      {si.inputAmount}{si.inputUnit}
+                    </span>
+                    {step.resultWeight !== undefined && si.inputAmount > 0 && (
+                      <div className="text-xs text-[var(--muted-foreground)] mt-1">
+                        → {step.resultWeight}g
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      });
+    }
+
+    // 降级使用 ingredients（向后兼容）
+    if (product.ingredients && product.ingredients.length > 0) {
+      // 按 method 分组
+      const methodGroups = new Map<string, typeof product.ingredients>();
+      for (const pi of product.ingredients) {
+        const existing = methodGroups.get(pi.method) || [];
+        existing.push(pi);
+        methodGroups.set(pi.method, existing);
+      }
+
+      let stepIndex = 0;
+      const elements: React.ReactNode[] = [];
+      
+      for (const [method, methodIngredients] of methodGroups) {
+        const totalInput = methodIngredients.reduce((sum, pi) => sum + pi.inputAmount, 0);
+        const firstIngredient = methodIngredients[0];
+        const lossRatio = firstIngredient.resultWeight && totalInput > 0
+          ? ((totalInput - firstIngredient.resultWeight) / totalInput * 100)
+          : undefined;
+
+        elements.push(
+          <div key={method} className="space-y-2">
+            <div className="flex items-center gap-2 py-2">
+              <Badge variant="outline" className="text-xs">
+                步骤 {stepIndex + 1}
+              </Badge>
+              <Badge className="bg-[var(--primary)] text-[var(--primary-foreground)] text-xs">
+                {firstIngredient.methodName}
+              </Badge>
+              {lossRatio !== undefined && (
+                <span className="text-xs text-[var(--warning)]">
+                  损耗 {lossRatio.toFixed(1)}%
+                </span>
+              )}
+            </div>
+            <div className="space-y-2 pl-4">
+              {methodIngredients.map((pi) => (
+                <div
+                  key={pi.id}
+                  className="flex items-center justify-between py-2 px-3 rounded-lg bg-[var(--muted)]"
+                >
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm truncate">{pi.ingredientName}</span>
+                    <div className="flex items-center gap-2 mt-1">
+                      {pi.lockStandard && pi.fixedInput && (
+                        <span className="text-xs text-[var(--muted-foreground)]">
+                          固定: {pi.fixedInput}{pi.inputUnit}→{pi.fixedOutput}g
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="number-font text-sm">
+                      {pi.inputAmount}{pi.inputUnit}
+                    </span>
+                    {pi.resultWeight !== undefined && (
+                      <div className="text-xs text-[var(--muted-foreground)] mt-1">
+                        → {pi.resultWeight}g
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+        stepIndex++;
+      }
+
+      return elements;
+    }
+
+    return (
+      <div className="text-center py-4 text-[var(--muted-foreground)]">
+        暂无原料明细
+      </div>
+    );
+  };
+
   if (!product) {
     return (
       <div className="content-area-no-nav">
@@ -222,6 +362,7 @@ export default function ProductDetailPage() {
 
         {/* 内容 */}
         <div className="px-4 py-6 pb-20 space-y-4 max-w-lg mx-auto overflow-y-auto">
+
           {/* 基本信息 */}
           <Card className="glass-card">
             <CardContent className="p-4">
@@ -242,6 +383,18 @@ export default function ProductDetailPage() {
                   {product.standardOutput}ml
                 </span>
               </div>
+              {/* 显示 ABV */}
+              {product.abv > 0 && (
+                <div className="flex items-center gap-4 mt-2">
+                  <span className="text-sm">酒精度</span>
+                  <span className="number-font text-[var(--primary)] font-medium">
+                    {product.abv.toFixed(1)}%
+                  </span>
+                  {product.abvManualOverride && (
+                    <span className="text-xs text-[var(--muted-foreground)]">(手动设定)</span>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -265,9 +418,9 @@ export default function ProductDetailPage() {
 
               {scaledIngredients.length > 0 && (
                 <div className="space-y-2">
-                  {scaledIngredients.map((si) => (
+                  {scaledIngredients.map((si, index) => (
                     <div
-                      key={si.ingredientId}
+                      key={`${si.ingredientId}-${index}`}
                       className="flex items-center justify-between py-2 px-3 rounded-lg bg-[var(--muted)]"
                     >
                       <div className="flex-1 min-w-0">
@@ -311,55 +464,15 @@ export default function ProductDetailPage() {
             </CardContent>
           </Card>
 
-          {/* 原料明细 */}
+          {/* 操作步骤/原料明细 */}
           <Card className="glass-card">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">原料明细</CardTitle>
+              <CardTitle className="text-base">
+                {product.steps && product.steps.length > 0 ? '操作步骤' : '原料明细'}
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {(product.ingredients || []).map((pi) => {
-                const ingredient = ingredients.find((i) => i.id === pi.ingredientId);
-                const lossRatio =
-                  pi.resultWeight !== undefined && pi.inputAmount > 0
-                    ? costCalculator.calculateLossRatio(pi.inputAmount, pi.resultWeight)
-                    : undefined;
-
-                return (
-                  <div
-                    key={pi.id}
-                    className="flex items-center justify-between py-2 px-3 rounded-lg bg-[var(--muted)]"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <span className="text-sm truncate">{pi.ingredientName}</span>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge variant="outline" className="text-xs">
-                          {pi.methodName}
-                        </Badge>
-                        {lossRatio !== undefined && (
-                          <span className="text-xs text-[var(--warning)]">
-                            损耗 {lossRatio.toFixed(1)}%
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <span className="number-font text-sm">
-                        {pi.inputAmount}{pi.inputUnit}
-                      </span>
-                      {pi.resultWeight !== undefined && (
-                        <div className="text-xs text-[var(--muted-foreground)] mt-1">
-                          → {pi.resultWeight}g
-                        </div>
-                      )}
-                      {pi.lockStandard && (
-                        <div className="text-xs text-[var(--muted-foreground)] mt-1">
-                          固定: {pi.fixedInput}→{pi.fixedOutput}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+            <CardContent className="space-y-4">
+              {renderStepsView()}
             </CardContent>
           </Card>
 

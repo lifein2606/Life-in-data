@@ -61,6 +61,7 @@ export interface Ingredient {
   minUnitPrice: number; // 最小单位单价（自动计算）
   minUnit: string; // 最小单位
   source: string; // 来源
+  abv: number; // 酒精度（%），新增字段
   relatedProductId?: string; // 如果是内部生产，关联的产品ID
   createdAt: number;
   updatedAt: number;
@@ -73,15 +74,39 @@ export interface Product {
   category: string; // 分类ID
   brands: string[]; // 售卖品牌ID列表
   standardOutput: number; // 出品总量标准
-  ingredients: ProductIngredient[]; // 原料明细
+  ingredients: ProductIngredient[]; // 原料明细（向后兼容）
+  steps: ProductionStep[]; // 操作步骤分组（新增）
   packageSpecs: string[]; // 包装方案ID列表
   cost: number; // 成本（自动计算）
   isIngredientProduct: boolean; // 是否为原料产品
+  abv: number; // 酒精度（%），新增字段
+  abvManualOverride: boolean; // 是否手动覆盖ABV
   createdAt: number;
   updatedAt: number;
 }
 
-// 产品原料明细
+// 步骤内的原料（精简版）
+export interface StepIngredient {
+  id: string;
+  ingredientId: string;
+  ingredientName: string;
+  inputAmount: number;
+  inputUnit: string;
+}
+
+// 操作步骤（分组结构）
+export interface ProductionStep {
+  id: string;
+  method: string;       // 操作方式ID
+  methodName: string;   // 操作方式名称
+  ingredients: StepIngredient[];  // 同一步骤的多个原料
+  resultWeight?: number;
+  lockStandard: boolean;
+  fixedInput?: number;
+  fixedOutput?: number;
+}
+
+// 产品原料明细（保留用于向后兼容）
 export interface ProductIngredient {
   id: string;
   ingredientId: string; // 关联原料ID

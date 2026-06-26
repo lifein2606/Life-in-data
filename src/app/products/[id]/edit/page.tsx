@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useProducts, useApp, usePasswordAuth } from '@/hooks/use-app';
 import { handleNumberInput } from '@/lib/utils';
+import { calculateProductABV, checkMissingABV } from '@/lib/storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,8 +20,8 @@ import {
 } from '@/components/ui/select';
 import { Combobox, ComboboxOption } from '@/components/ui/combobox';
 import { PasswordDialog } from '@/components/password-dialog';
-import { ChevronLeft, Save, Plus, Trash2 } from 'lucide-react';
-import { ProductIngredient, Method } from '@/types';
+import { ChevronLeft, Save, Plus, Trash2, AlertCircle, CheckCircle } from 'lucide-react';
+import { ProductIngredient, ProductionStep, StepIngredient, Method } from '@/types';
 import { generateId, dependencyChecker } from '@/lib/storage';
 
 export default function ProductEditPage() {
@@ -42,9 +43,12 @@ export default function ProductEditPage() {
     category: '',
     brands: [] as string[],
     standardOutput: 500,
-    ingredients: [] as ProductIngredient[],
+    ingredients: [] as ProductIngredient[],  // 保留用于兼容
+    steps: [] as ProductionStep[],           // 新的步骤分组结构
     packageSpecs: [] as string[],
     isIngredientProduct: false,
+    abv: 0,
+    abvManualOverride: false,
   });
 
   // 加载已有数据
@@ -58,8 +62,11 @@ export default function ProductEditPage() {
           brands: product.brands,
           standardOutput: product.standardOutput,
           ingredients: product.ingredients || [],
+          steps: product.steps || [],
           packageSpecs: product.packageSpecs || [],
           isIngredientProduct: product.isIngredientProduct,
+          abv: product.abv || 0,
+          abvManualOverride: product.abvManualOverride || false,
         });
       }
     }
@@ -76,23 +83,55 @@ export default function ProductEditPage() {
         brands: product.brands,
         standardOutput: product.standardOutput,
         ingredients: product.ingredients || [],
+        steps: product.steps || [],
         packageSpecs: product.packageSpecs || [],
         isIngredientProduct: product.isIngredientProduct,
+        abv: product.abv || 0,
+        abvManualOverride: product.abvManualOverride || false,
       });
     }
   };
 
-  // 计算成本预览
+  // 计算 ABV（自动）
+  const calculatedABV = useMemo(() => {
+    if (formData.steps.length === 0) return 0;
+    return calculateProductABV(formData.steps, ingredients || []);
+  }, [formData.steps, ingredients]);
+
+  // 检查 ABV 是否完整
+  const abvStatus = useMemo(() => {
+    if (formData.steps.length === 0) return { hasAlcoholic: false, allFilled: true };
+    return checkMissingABV(formData.steps, ingredients || []);
+  }, [formData.steps, ingredients]);
+
+  // 实际显示的 ABV
+  const displayABV = formData.abvManualOverride ? formData.abv : (calculatedABV > 0 ? calculatedABV : formData.abv);
+
+  // 成本预览
   const previewCost = useMemo(() => {
     let total = 0;
-    for (const pi of formData.ingredients) {
-      const ingredient = (ingredients || []).find((i) => i.id === pi.ingredientId);
-      if (ingredient) {
-        total += pi.inputAmount * ingredient.minUnitPrice;
+    
+    // 优先使用 steps 计算成本
+    if (formData.steps.length > 0) {
+      for (const step of formData.steps) {
+        for (const si of step.ingredients) {
+          const ingredient = (ingredients || []).find((i) => i.id === si.ingredientId);
+          if (ingredient) {
+            total += si.inputAmount * ingredient.minUnitPrice;
+          }
+        }
+      }
+    } else {
+      // 降级使用 ingredients
+      for (const pi of formData.ingredients) {
+        const ingredient = (ingredients || []).find((i) => i.id === pi.ingredientId);
+        if (ingredient) {
+          total += pi.inputAmount * ingredient.minUnitPrice;
+        }
       }
     }
     return total;
-  }, [formData.ingredients, ingredients]);
+  }, [formData.steps, formData.ingredients, ingredients]);
 
   // 启用的分类
   const enabledCategories = config.categories.filter((c) => c.enabled);
@@ -103,7 +142,90 @@ export default function ProductEditPage() {
   // 启用的制作方法
   const enabledMethods = config.methods.filter((m) => m.enabled);
 
-  // 添加原料及操作
+  // ========== 步骤相关操作 ==========
+
+  // 添加步骤
+  const addStep = () => {
+    const newStep: ProductionStep = {
+      id: generateId(),
+      method: '',
+      methodName: '',
+      ingredients: [],
+      lockStandard: false,
+    };
+    setFormData({
+      ...formData,
+      steps: [...formData.steps, newStep],
+    });
+  };
+
+  // 更新步骤
+  const updateStep = (stepId: string, updates: Partial<ProductionStep>) => {
+    const newSteps = formData.steps.map((step) =>
+      step.id === stepId ? { ...step, ...updates } : step
+    );
+    setFormData({ ...formData, steps: newSteps });
+  };
+
+  // 删除步骤
+  const removeStep = (stepId: string) => {
+    setFormData({
+      ...formData,
+      steps: formData.steps.filter((step) => step.id !== stepId),
+    });
+  };
+
+  // 添加步骤内的原料
+  const addStepIngredient = (stepId: string) => {
+    const newIngredient: StepIngredient = {
+      id: generateId(),
+      ingredientId: '',
+      ingredientName: '',
+      inputAmount: 0,
+      inputUnit: 'g',
+    };
+    const newSteps = formData.steps.map((step) =>
+      step.id === stepId
+        ? { ...step, ingredients: [...step.ingredients, newIngredient] }
+        : step
+    );
+    setFormData({ ...formData, steps: newSteps });
+  };
+
+  // 更新步骤内的原料
+  const updateStepIngredient = (stepId: string, ingredientId: string, updates: Partial<StepIngredient>) => {
+    const newSteps = formData.steps.map((step) =>
+      step.id === stepId
+        ? {
+            ...step,
+            ingredients: step.ingredients.map((ing) =>
+              ing.id === ingredientId ? { ...ing, ...updates } : ing
+            ),
+          }
+        : step
+    );
+    setFormData({ ...formData, steps: newSteps });
+  };
+
+  // 删除步骤内的原料
+  const removeStepIngredient = (stepId: string, ingredientId: string) => {
+    const newSteps = formData.steps.map((step) =>
+      step.id === stepId
+        ? { ...step, ingredients: step.ingredients.filter((ing) => ing.id !== ingredientId) }
+        : step
+    );
+    setFormData({ ...formData, steps: newSteps });
+  };
+
+  // 获取方法的 hasLoss 属性
+  const getMethodHasLoss = (methodId: string): boolean => {
+    const method = config.methods.find((m) => m.id === methodId);
+    return method?.hasLoss || false;
+  };
+
+  // ========== 兼容模式：原料相关操作 ==========
+
+  // 添加原料及操作（兼容旧数据迁移）
   const addIngredientItem = () => {
     const newItem: ProductIngredient = {
       id: generateId(),
@@ -173,6 +295,24 @@ export default function ProductEditPage() {
     return ((input - result) / input) * 100;
   };
 
+  // 手动设置 ABV
+  const handleManualABVChange = (value: number) => {
+    setFormData({
+      ...formData,
+      abv: value,
+      abvManualOverride: true,
+    });
+  };
+
+  // 重置为自动计算 ABV
+  const resetABVToAuto = () => {
+    setFormData({
+      ...formData,
+      abv: calculatedABV,
+      abvManualOverride: false,
+    });
+  };
+
   // 提交表单（异步）
   const handleSubmit = async () => {
     // 验证
@@ -192,38 +332,44 @@ export default function ProductEditPage() {
       alert('请输入出品总量标准');
       return;
     }
-    if (formData.ingredients.length === 0) {
-      alert('请添加原料及操作');
+
+    // 验证步骤数据
+    if (formData.steps.length === 0 && formData.ingredients.length === 0) {
+      alert('请添加操作步骤');
       return;
     }
-    
-    // 验证原料及操作
-    for (const pi of formData.ingredients || []) {
-      if (!pi.ingredientId) {
-        alert('请为所有原料选择关联原料');
+
+    // 验证每个步骤
+    for (const step of formData.steps) {
+      if (!step.method) {
+        alert('请为所有步骤选择操作方式');
         return;
       }
-      if (pi.inputAmount <= 0) {
-        alert('请输入所有原料的投入量');
+      if (step.ingredients.length === 0) {
+        alert('每个步骤至少需要添加一个原料');
         return;
       }
-      if (!pi.method) {
-        alert('请为所有原料选择操作方式');
+      for (const si of step.ingredients) {
+        if (!si.ingredientId) {
+          alert('请为所有步骤内的原料选择关联原料');
+          return;
+        }
+        if (si.inputAmount <= 0) {
+          alert('请输入所有原料的投入量');
+          return;
+        }
+      }
+      const method = config.methods.find((m) => m.id === step.method);
+      if (method?.hasLoss && !step.resultWeight) {
+        alert(`步骤"${step.methodName}"为有损耗操作，必须填写结果液重`);
         return;
       }
-      
-      const method = config.methods.find((m) => m.id === pi.method);
-      if (method?.hasLoss && !pi.resultWeight) {
-        alert('有损耗操作必须填写结果液重');
-        return;
-      }
-      
-      if (pi.lockStandard) {
-        if (!pi.fixedInput || pi.fixedInput <= 0) {
+      if (step.lockStandard) {
+        if (!step.fixedInput || step.fixedInput <= 0) {
           alert('锁定标准时必须填写固定投入量');
           return;
         }
-        if (method?.hasLoss && (!pi.fixedOutput || pi.fixedOutput <= 0)) {
+        if (method?.hasLoss && (!step.fixedOutput || step.fixedOutput <= 0)) {
           alert('锁定标准且有损耗时必须填写固定结果液重');
           return;
         }
@@ -232,10 +378,12 @@ export default function ProductEditPage() {
 
     // 循环依赖检测（如果勾选原料产品）
     if (formData.isIngredientProduct) {
-      for (const pi of formData.ingredients) {
-        if (dependencyChecker.hasCircularDependency(productId, pi.ingredientId, products)) {
-          alert('存在循环依赖，请检查原料关联');
-          return;
+      for (const step of formData.steps) {
+        for (const si of step.ingredients) {
+          if (dependencyChecker.hasCircularDependency(productId, si.ingredientId, products)) {
+            alert('存在循环依赖，请检查原料关联');
+            return;
+          }
         }
       }
     }
@@ -243,26 +391,24 @@ export default function ProductEditPage() {
     setLoading(true);
 
     try {
+      // 准备保存的数据（同时包含 steps 和 ingredients 以确保兼容）
+      const saveData = {
+        name: formData.name.trim(),
+        category: formData.category,
+        brands: formData.brands,
+        standardOutput: formData.standardOutput,
+        steps: formData.steps,
+        ingredients: formData.ingredients,
+        packageSpecs: formData.packageSpecs,
+        isIngredientProduct: formData.isIngredientProduct,
+        abv: displayABV,
+        abvManualOverride: formData.abvManualOverride,
+      };
+
       if (isEdit) {
-        await updateProduct(productId, {
-          name: formData.name.trim(),
-          category: formData.category,
-          brands: formData.brands,
-          standardOutput: formData.standardOutput,
-          ingredients: formData.ingredients,
-          packageSpecs: formData.packageSpecs,
-          isIngredientProduct: formData.isIngredientProduct,
-        });
+        await updateProduct(productId, saveData);
       } else {
-        await addProduct({
-          name: formData.name.trim(),
-          category: formData.category,
-          brands: formData.brands,
-          standardOutput: formData.standardOutput,
-          ingredients: formData.ingredients,
-          packageSpecs: formData.packageSpecs,
-          isIngredientProduct: formData.isIngredientProduct,
-        });
+        await addProduct(saveData);
       }
       // 显式调用 refreshData 确保数据刷新完成
       await refreshData();
@@ -287,8 +433,7 @@ export default function ProductEditPage() {
   }
 
   return (
-    <div className="content-area-no-nav pb-6">
-      {/* 顶部导航 */}
+    <div className="content-area-no-nav">
       <div className="mobile-header flex items-center justify-between px-4">
         <Button
           variant="ghost"
@@ -310,8 +455,7 @@ export default function ProductEditPage() {
         </Button>
       </div>
 
-      {/* 表单 */}
-      <div className="px-4 py-6 space-y-4 max-w-lg mx-auto">
+      <div className="px-4 py-6 space-y-4 max-w-lg mx-auto overflow-y-auto pb-20">
         {/* 基本信息 */}
         <Card className="glass-card">
           <CardHeader>
@@ -324,12 +468,12 @@ export default function ProductEditPage() {
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 className="bg-[var(--input)] mt-1"
-                placeholder="如：莫吉托"
+                placeholder="如：橙子伏特加"
               />
             </div>
 
             <div>
-              <Label>产品分类 *</Label>
+              <Label>分类 *</Label>
               <Combobox
                 options={enabledCategories.filter((cat) => cat.id).map((cat) => ({
                   value: cat.id,
@@ -345,8 +489,8 @@ export default function ProductEditPage() {
 
             {!formData.isIngredientProduct && (
               <div>
-                <Label>售卖品牌 *</Label>
-                <div className="flex flex-wrap gap-3 mt-2">
+                <Label>售卖品牌</Label>
+                <div className="flex flex-wrap gap-2 mt-2">
                   {enabledBrands.filter((brand) => brand.id).map((brand) => (
                     <button
                       key={brand.id}
@@ -390,200 +534,284 @@ export default function ProductEditPage() {
                 }
               />
             </div>
+
+            {/* ABV 显示区域 */}
+            <div className="p-3 rounded-lg bg-[var(--muted)]">
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-sm">酒精度 (ABV)</Label>
+                {formData.abvManualOverride && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs"
+                    onClick={resetABVToAuto}
+                  >
+                    重置为自动
+                  </Button>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="number-font text-lg text-[var(--primary)]">
+                  {displayABV > 0 ? `${displayABV.toFixed(1)}%` : '0%'}
+                </span>
+                {formData.abvManualOverride && (
+                  <span className="text-xs text-[var(--muted-foreground)]">(已手动设定)</span>
+                )}
+              </div>
+              {calculatedABV > 0 && !formData.abvManualOverride && (
+                <div className="text-xs text-[var(--muted-foreground)] mt-1">
+                  自动计算值
+                </div>
+              )}
+              {abvStatus.hasAlcoholic && !abvStatus.allFilled && (
+                <div className="flex items-center gap-1 mt-2 text-xs text-[var(--warning)]">
+                  <AlertCircle className="h-3 w-3" />
+                  部分原料未填写酒精度，计算结果可能不准确
+                </div>
+              )}
+              <div className="mt-2">
+                <Input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="100"
+                  value={formData.abv}
+                  onChange={(e) => handleManualABVChange(parseFloat(e.target.value) || 0)}
+                  className="bg-[var(--input)] number-font w-[100px] h-8 text-sm"
+                />
+              </div>
+            </div>
           </CardContent>
         </Card>
 
-        {/* 原料及操作 */}
+        {/* 操作步骤 */}
         <Card className="glass-card">
           <CardHeader className="pb-3 flex flex-row items-center justify-between">
-            <CardTitle className="text-base">原料及操作 *</CardTitle>
+            <CardTitle className="text-base">操作步骤 *</CardTitle>
             <Button
               variant="ghost"
               size="icon"
-              onClick={addIngredientItem}
+              onClick={addStep}
               className="h-8 w-8"
             >
               <Plus className="h-4 w-4" />
             </Button>
           </CardHeader>
           <CardContent className="space-y-4">
-            {(formData.ingredients || []).length === 0 ? (
+            {formData.steps.length === 0 && formData.ingredients.length === 0 ? (
               <div className="text-center py-4 text-[var(--muted-foreground)]">
-                点击右上角 + 添加原料
+                点击右上角 + 添加步骤
               </div>
             ) : (
-              (formData.ingredients || []).map((pi, index) => {
-                const ingredient = (ingredients || []).find((i) => i.id === pi.ingredientId);
-                const method = config.methods.find((m) => m.id === pi.method);
-                const lossRatio = pi.resultWeight
-                  ? calculateLossRatio(pi.inputAmount, pi.resultWeight)
-                  : 0;
+              <>
+                {/* 渲染步骤分组 */}
+                {formData.steps.map((step, stepIndex) => {
+                  const method = config.methods.find((m) => m.id === step.method);
+                  const hasLoss = method?.hasLoss || false;
 
-                return (
-                  <div key={pi.id} className="space-y-3 p-3 rounded-lg bg-[var(--muted)]">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">原料 {index + 1}</span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeIngredientItem(pi.id)}
-                        className="h-7 w-7"
-                      >
-                        <Trash2 className="h-4 w-4 text-[var(--destructive)]" />
-                      </Button>
-                    </div>
+                  return (
+                    <div key={step.id} className="space-y-3 p-3 rounded-lg bg-[var(--muted)]">
+                      {/* 步骤头部 */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">步骤 {stepIndex + 1}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeStep(step.id)}
+                          className="h-7 w-7"
+                        >
+                          <Trash2 className="h-4 w-4 text-[var(--destructive)]" />
+                        </Button>
+                      </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                      {/* 操作方式选择 */}
                       <div>
-                        <Label className="text-xs">原料</Label>
+                        <Label className="text-xs">操作方式</Label>
                         <Combobox
-                          options={ingredients.filter((ing) => ing.id).map((ing) => ({
-                            value: ing.id,
-                            label: `${ing.name} (${ing.category})`,
-                          }))}
-                          value={pi.ingredientId}
+                          options={[
+                            ...enabledMethods.filter((m) => !m.hasLoss && m.id).map((m) => ({
+                              value: m.id,
+                              label: `${m.name} (无损耗)`,
+                            })),
+                            ...enabledMethods.filter((m) => m.hasLoss && m.id).map((m) => ({
+                              value: m.id,
+                              label: `${m.name} (有损耗)`,
+                            })),
+                          ]}
+                          value={step.method}
                           onChange={(v) => {
-                            const ing = (ingredients || []).find((i) => i.id === v);
-                            updateIngredientItem(pi.id, {
-                              ingredientId: v,
-                              ingredientName: ing?.name || '',
-                              inputUnit: ing?.minUnit || 'g',
+                            const m = config.methods.find((m) => m.id === v);
+                            updateStep(step.id, {
+                              method: v,
+                              methodName: m?.name || '',
+                              resultWeight: m?.hasLoss ? step.resultWeight : undefined,
                             });
                           }}
-                          placeholder="选择原料"
-                          searchPlaceholder="搜索原料..."
+                          placeholder="选择操作"
+                          searchPlaceholder="搜索操作方式..."
                           className="bg-[var(--input)] mt-1 h-9"
                           popoverClassName="max-h-[200px]"
                         />
                       </div>
 
-                      <div>
-                        <Label className="text-xs">投入量</Label>
-                        <div className="flex items-center gap-1 mt-1">
-                          <Input
-                            type="text"
-                            value={pi.inputAmount}
-                            onChange={(e) => {
-                              const val = handleNumberInput(e.target.value, String(pi.inputAmount));
-                              updateIngredientItem(pi.id, { inputAmount: parseFloat(val) || 0 })
-                            }}
-                            className="bg-[var(--input)] number-font h-9"
-                          />
-                          <span className="text-xs">{pi.inputUnit}</span>
-                        </div>
+                      {/* 步骤内原料列表 */}
+                      <div className="space-y-2">
+                        {step.ingredients.map((si) => {
+                          const ingredient = (ingredients || []).find((i) => i.id === si.ingredientId);
+                          return (
+                            <div key={si.id} className="flex items-center gap-2 p-2 rounded bg-[var(--background)]">
+                              <div className="flex-1 min-w-0">
+                                <Combobox
+                                  options={ingredients.filter((ing) => ing.id).map((ing) => ({
+                                    value: ing.id,
+                                    label: `${ing.name} (${ing.category})`,
+                                  }))}
+                                  value={si.ingredientId}
+                                  onChange={(v) => {
+                                    const ing = (ingredients || []).find((i) => i.id === v);
+                                    updateStepIngredient(step.id, si.id, {
+                                      ingredientId: v,
+                                      ingredientName: ing?.name || '',
+                                      inputUnit: ing?.minUnit || 'g',
+                                    });
+                                  }}
+                                  placeholder="选择原料"
+                                  searchPlaceholder="搜索原料..."
+                                  className="bg-[var(--input)] h-8 text-sm"
+                                  popoverClassName="max-h-[150px]"
+                                />
+                              </div>
+                              <div className="flex items-center gap-1 w-[100px]">
+                                <Input
+                                  type="text"
+                                  value={si.inputAmount}
+                                  onChange={(e) => {
+                                    const val = handleNumberInput(e.target.value, String(si.inputAmount));
+                                    updateStepIngredient(step.id, si.id, { inputAmount: parseFloat(val) || 0 });
+                                  }}
+                                  className="bg-[var(--input)] number-font h-8 text-sm w-[50px]"
+                                />
+                                <span className="text-xs">{si.inputUnit}</span>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => removeStepIngredient(step.id, si.id)}
+                                className="h-7 w-7 shrink-0"
+                              >
+                                <Trash2 className="h-3 w-3 text-[var(--destructive)]" />
+                              </Button>
+                            </div>
+                          );
+                        })}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => addStepIngredient(step.id)}
+                          className="w-full h-8 text-xs"
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          添加原料
+                        </Button>
                       </div>
-                    </div>
 
-                    <div>
-                      <Label className="text-xs">操作方式</Label>
-                      <Combobox
-                        options={[
-                          ...enabledMethods.filter((m) => !m.hasLoss && m.id).map((m) => ({
-                            value: m.id,
-                            label: `${m.name} (无损耗)`,
-                          })),
-                          ...enabledMethods.filter((m) => m.hasLoss && m.id).map((m) => ({
-                            value: m.id,
-                            label: `${m.name} (有损耗)`,
-                          })),
-                        ]}
-                        value={pi.method}
-                        onChange={(v) => {
-                          const m = config.methods.find((m) => m.id === v);
-                          updateIngredientItem(pi.id, {
-                            method: v,
-                            methodName: m?.name || '',
-                            // 切换到无损耗时清空结果液重
-                            resultWeight: m?.hasLoss ? pi.resultWeight : undefined,
-                          });
-                        }}
-                        placeholder="选择操作"
-                        searchPlaceholder="搜索操作方式..."
-                        className="bg-[var(--input)] mt-1 h-9"
-                        popoverClassName="max-h-[200px]"
-                      />
-                    </div>
-
-                    {/* 有损耗时显示结果液重 */}
-                    {method?.hasLoss && (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <Label className="text-xs">结果液重</Label>
-                          <Input
-                            type="text"
-                            value={pi.resultWeight || ''}
-                            onChange={(e) => {
-                              const val = handleNumberInput(e.target.value, String(pi.resultWeight || 0));
-                              updateIngredientItem(pi.id, { resultWeight: parseFloat(val) || undefined })
-                            }}
-                            className="bg-[var(--input)] number-font mt-1 h-9"
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs">损耗比例</Label>
-                          <div className="text-sm number-font text-[var(--warning)] mt-2">
-                            {lossRatio.toFixed(1)}%
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 锁定每次标准 */}
-                    <div className="flex items-center justify-between">
-                      <Label className="text-xs">锁定每次标准</Label>
-                      <Switch
-                        checked={pi.lockStandard}
-                        onCheckedChange={(checked) =>
-                          updateIngredientItem(pi.id, { lockStandard: checked })
-                        }
-                      />
-                    </div>
-
-                    {pi.lockStandard && (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <Label className="text-xs">固定投入量</Label>
-                          <Input
-                            type="text"
-                            value={pi.fixedInput || ''}
-                            onChange={(e) => {
-                              const val = handleNumberInput(e.target.value, String(pi.fixedInput || 0));
-                              updateIngredientItem(pi.id, { fixedInput: parseFloat(val) || undefined })
-                            }}
-                            className="bg-[var(--input)] number-font mt-1 h-9"
-                          />
-                        </div>
-                        {method?.hasLoss && (
+                      {/* 有损耗时显示结果液重 */}
+                      {hasLoss && (
+                        <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <Label className="text-xs">固定结果液重</Label>
+                            <Label className="text-xs">结果液重</Label>
                             <Input
                               type="text"
-                              value={pi.fixedOutput || ''}
+                              value={step.resultWeight || ''}
                               onChange={(e) => {
-                                const val = handleNumberInput(e.target.value, String(pi.fixedOutput || 0));
-                                updateIngredientItem(pi.id, { fixedOutput: parseFloat(val) || undefined })
+                                const val = handleNumberInput(e.target.value, String(step.resultWeight || 0));
+                                updateStep(step.id, { resultWeight: parseFloat(val) || undefined });
                               }}
                               className="bg-[var(--input)] number-font mt-1 h-9"
                             />
                           </div>
-                        )}
+                          <div>
+                            <Label className="text-xs">损耗比例</Label>
+                            <div className="text-sm number-font text-[var(--warning)] mt-2">
+                              {step.resultWeight && step.ingredients.reduce((sum, si) => sum + si.inputAmount, 0) > 0
+                                ? `${calculateLossRatio(
+                                    step.ingredients.reduce((sum, si) => sum + si.inputAmount, 0),
+                                    step.resultWeight
+                                  ).toFixed(1)}%`
+                                : '0%'}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 锁定每次标准 */}
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">锁定每次标准</Label>
+                        <Switch
+                          checked={step.lockStandard}
+                          onCheckedChange={(checked) =>
+                            updateStep(step.id, { lockStandard: checked })
+                          }
+                        />
                       </div>
-                    )}
-                  </div>
-                );
-              })
+
+                      {step.lockStandard && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label className="text-xs">固定投入量</Label>
+                            <Input
+                              type="text"
+                              value={step.fixedInput || ''}
+                              onChange={(e) => {
+                                const val = handleNumberInput(e.target.value, String(step.fixedInput || 0));
+                                updateStep(step.id, { fixedInput: parseFloat(val) || undefined });
+                              }}
+                              className="bg-[var(--input)] number-font mt-1 h-9"
+                            />
+                          </div>
+                          {hasLoss && (
+                            <div>
+                              <Label className="text-xs">固定结果液重</Label>
+                              <Input
+                                type="text"
+                                value={step.fixedOutput || ''}
+                                onChange={(e) => {
+                                  const val = handleNumberInput(e.target.value, String(step.fixedOutput || 0));
+                                  updateStep(step.id, { fixedOutput: parseFloat(val) || undefined });
+                                }}
+                                className="bg-[var(--input)] number-font mt-1 h-9"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* 添加步骤按钮 */}
+                <Button
+                  variant="outline"
+                  onClick={addStep}
+                  className="w-full"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  添加步骤
+                </Button>
+              </>
             )}
 
             {previewCost > 0 && (
-              <Separator />
+              <>
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-[var(--muted-foreground)]">成本预览</span>
+                  <span className="number-font text-[var(--primary)] font-medium">
+                    ¥{previewCost.toFixed(2)}
+                  </span>
+                </div>
+              </>
             )}
-
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-[var(--muted-foreground)]">成本预览</span>
-              <span className="number-font text-[var(--primary)] font-medium">
-                ¥{previewCost.toFixed(2)}
-              </span>
-            </div>
           </CardContent>
         </Card>
 

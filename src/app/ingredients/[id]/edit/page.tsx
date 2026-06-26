@@ -35,6 +35,7 @@ export default function IngredientEditPage() {
     minUnit: 'g',
     source: 'purchase',
     relatedProductId: '',
+    abv: 0,
   });
 
   useEffect(() => {
@@ -51,6 +52,7 @@ export default function IngredientEditPage() {
           minUnit: ingredient.minUnit,
           source: ingredient.source,
           relatedProductId: ingredient.relatedProductId || '',
+          abv: ingredient.abv || 0,
         });
       }
     }
@@ -70,6 +72,7 @@ export default function IngredientEditPage() {
         minUnit: ingredient.minUnit,
         source: ingredient.source,
         relatedProductId: ingredient.relatedProductId || '',
+        abv: ingredient.abv || 0,
       });
     }
   };
@@ -145,6 +148,7 @@ export default function IngredientEditPage() {
           minUnit: formData.minUnit,
           source: formData.source,
           relatedProductId: formData.relatedProductId,
+          abv: formData.abv,
         });
       } else {
         await addIngredient({
@@ -156,6 +160,7 @@ export default function IngredientEditPage() {
           minUnit: formData.minUnit,
           source: formData.source,
           relatedProductId: formData.relatedProductId,
+          abv: formData.abv,
         });
       }
       await refreshData();
@@ -373,6 +378,30 @@ export default function IngredientEditPage() {
                 )}
               </div>
             )}
+
+            {/* 酒精度输入框 */}
+            <div>
+              <Label>酒精度 (%)</Label>
+              <div className="flex items-center gap-2 mt-1">
+                <Input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="96"
+                  value={formData.abv}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    setFormData({ ...formData, abv: isNaN(val) ? 0 : Math.min(96, Math.max(0, val)) });
+                  }}
+                  className="bg-[var(--input)] number-font w-[120px]"
+                  placeholder="0"
+                />
+                <span className="text-sm text-[var(--muted-foreground)]">%</span>
+              </div>
+              <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                用于计算产品的酒精度，如伏特加(40%)、朗姆酒(38%)等
+              </p>
+            </div>
           </CardContent>
         </Card>
       </div>
