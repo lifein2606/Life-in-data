@@ -33,21 +33,19 @@ export default function IngredientDetailPage() {
     (p) => p.ingredients && p.ingredients.some((pi) => pi.ingredientId === ingredientId)
   );
 
-  // 获取来源标记
+  // 获取来源显示名称
   const getSourceBadge = (source: string) => {
-    if (source === 'self') {
-      return <Badge className="bg-[var(--primary)] text-[var(--primary-foreground)] text-xs">自制</Badge>;
+    const src = (config.ingredientSources || []).find((s) => s.value === source);
+    const label = src?.name || source;
+    if (source === 'internal') {
+      return <Badge className="bg-[var(--primary)] text-[var(--primary-foreground)] text-xs">{label}</Badge>;
     }
-    if (source === 'purchase') {
-      return <Badge variant="outline" className="text-xs">外购</Badge>;
-    }
-    return null;
+    return <Badge variant="outline" className="text-xs">{label}</Badge>;
   };
 
   // 获取分类名称
-  const getCategoryName = (categoryId: string) => {
-    const cat = config.categories.find((c) => c.id === categoryId);
-    return cat?.name || '未分类';
+  const getCategoryName = (category: string) => {
+    return category || '未分类';
   };
 
   const handleEdit = () => {
