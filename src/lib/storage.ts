@@ -15,6 +15,9 @@ import {
   IngredientSource,
   IngredientUnit,
   ProductionLog,
+  Batch,
+  ProductionTask,
+  Order,
 } from '@/types';
 
 // Supabase 客户端获取函数（延迟初始化，仅在客户端）
@@ -193,6 +196,189 @@ export const productionLogStorage = {
   },
   async delete(productId: string): Promise<void> {
     await settingsStorage.delete(`production_logs_${productId}`);
+  },
+};
+
+// ========== 批次追踪 ==========
+export const batchStorage = {
+  // 获取所有批次
+  async getAll(): Promise<Batch[]> {
+    const data = await settingsStorage.get<Batch[]>('all_batches');
+    return data || [];
+  },
+  // 获取某产品的所有批次
+  async getByProduct(productId: string): Promise<Batch[]> {
+    const all = await this.getAll();
+    return all.filter(b => b.productId === productId).sort((a, b) => b.productionDate - a.productionDate);
+  },
+  // 获取单个批次
+  async getById(batchId: string): Promise<Batch | null> {
+    const all = await this.getAll();
+    return all.find(b => b.id === batchId) || null;
+  },
+  // 创建批次
+  async create(batch: Batch): Promise<void> {
+    const all = await this.getAll();
+    all.push(batch);
+    await settingsStorage.set('all_batches', all);
+  },
+  // 更新批次
+  async update(batchId: string, updates: Partial<Batch>): Promise<void> {
+    const all = await this.getAll();
+    const idx = all.findIndex(b => b.id === batchId);
+    if (idx >= 0) {
+      all[idx] = { ...all[idx], ...updates };
+      await settingsStorage.set('all_batches', all);
+    }
+  },
+  // 添加灌装记录
+  async addBottlingRecord(batchId: string, record: import('@/types').BottlingRecord): Promise<void> {
+    const all = await this.getAll();
+    const batch = all.find(b => b.id === batchId);
+    if (batch) {
+      batch.bottlingRecords.push(record);
+      batch.bottledAmount += record.totalAmount;
+      batch.remainingAmount -= (record.totalAmount + record.wastageAmount);
+      if (batch.remainingAmount <= 0) {
+        batch.remainingAmount = 0;
+        batch.status = 'completed';
+      } else if (batch.bottledAmount > 0) {
+        batch.status = 'partial';
+      }
+      await settingsStorage.set('all_batches', all);
+    }
+  },
+  // 添加报损记录
+  async addSpoilageRecord(batchId: string, record: import('@/types').SpoilageRecord): Promise<void> {
+    const all = await this.getAll();
+    const batch = all.find(b => b.id === batchId);
+    if (batch) {
+      batch.spoilageRecords.push(record);
+      batch.remainingAmount -= record.amount;
+      if (batch.remainingAmount <= 0) {
+        batch.remainingAmount = 0;
+        if (batch.bottledAmount > 0) {
+          batch.status = 'cleared';
+        } else {
+          batch.status = 'completed';
+        }
+      }
+      await settingsStorage.set('all_batches', all);
+    }
+  },
+  // 标记批次已清
+  async markCleared(batchId: string): Promise<void> {
+    await this.update(batchId, { status: 'cleared', remainingAmount: 0 });
+  },
+  // 扣减库存（交付时）
+  async deductAmount(batchId: string, amount: number): Promise<void> {
+    const all = await this.getAll();
+    const batch = all.find(b => b.id === batchId);
+    if (batch) {
+      batch.remainingAmount -= amount;
+      if (batch.remainingAmount <= 0) {
+        batch.remainingAmount = 0;
+        batch.status = batch.bottledAmount > 0 ? 'cleared' : 'completed';
+      }
+      await settingsStorage.set('all_batches', all);
+    }
+  },
+};
+
+// ========== 制作任务 ==========
+export const taskStorage = {
+  async getAll(): Promise<ProductionTask[]> {
+    const data = await settingsStorage.get<ProductionTask[]>('all_tasks');
+    return data || [];
+  },
+  async getById(taskId: string): Promise<ProductionTask | null> {
+    const all = await this.getAll();
+    return all.find(t => t.id === taskId) || null;
+  },
+  async create(task: ProductionTask): Promise<void> {
+    const all = await this.getAll();
+    all.push(task);
+    await settingsStorage.set('all_tasks', all);
+  },
+  async update(taskId: string, updates: Partial<ProductionTask>): Promise<void> {
+    const all = await this.getAll();
+    const idx = all.findIndex(t => t.id === taskId);
+    if (idx >= 0) {
+      all[idx] = { ...all[idx], ...updates };
+      await settingsStorage.set('all_tasks', all);
+    }
+  },
+  async updateTaskItem(taskId: string, itemId: string, updates: Partial<import('@/types').ProductionTaskItem>): Promise<void> {
+    const all = await this.getAll();
+    const task = all.find(t => t.id === taskId);
+    if (task) {
+      const item = task.items.find(i => i.id === itemId);
+      if (item) {
+        Object.assign(item, updates);
+        // 自动检查任务状态
+        const allDone = task.items.every(i => i.productStatus === 'done' || i.productStatus === 'cancelled');
+        if (allDone) {
+          task.status = 'completed';
+        } else if (task.status === 'not_started') {
+          task.status = 'in_progress';
+        }
+        await settingsStorage.set('all_tasks', all);
+      }
+    }
+  },
+  async delete(taskId: string): Promise<void> {
+    const all = await this.getAll();
+    await settingsStorage.set('all_tasks', all.filter(t => t.id !== taskId));
+  },
+};
+
+// ========== 要货单 ==========
+export const orderStorage = {
+  async getAll(): Promise<Order[]> {
+    const data = await settingsStorage.get<Order[]>('all_orders');
+    return data || [];
+  },
+  async getById(orderId: string): Promise<Order | null> {
+    const all = await this.getAll();
+    return all.find(o => o.id === orderId) || null;
+  },
+  async create(order: Order): Promise<void> {
+    const all = await this.getAll();
+    all.push(order);
+    await settingsStorage.set('all_orders', all);
+  },
+  async update(orderId: string, updates: Partial<Order>): Promise<void> {
+    const all = await this.getAll();
+    const idx = all.findIndex(o => o.id === orderId);
+    if (idx >= 0) {
+      all[idx] = { ...all[idx], ...updates };
+      await settingsStorage.set('all_orders', all);
+    }
+  },
+  async addDelivery(orderId: string, delivery: import('@/types').DeliveredItem): Promise<void> {
+    const all = await this.getAll();
+    const order = all.find(o => o.id === orderId);
+    if (order) {
+      order.deliveredItems.push(delivery);
+      // 更新要货项的已交付数量
+      const item = order.items.find(i => i.productId === delivery.productId);
+      if (item) {
+        item.deliveredQuantity += delivery.quantity;
+      }
+      // 更新订单状态
+      const allDelivered = order.items.every(i => i.deliveredQuantity >= i.quantity);
+      const someDelivered = order.items.some(i => i.deliveredQuantity > 0);
+      if (allDelivered) {
+        order.status = 'completed';
+      } else if (someDelivered) {
+        order.status = 'partial';
+      }
+      await settingsStorage.set('all_orders', all);
+    }
+  },
+  async delete(orderId: string): Promise<void> {
+    const all = await this.getAll();
+    await settingsStorage.set('all_orders', all.filter(o => o.id !== orderId));
   },
 };
 
@@ -415,6 +601,9 @@ async function productRecordToModel(record: any): Promise<Product> {
     manualCost = settingsCost.value;
   }
   
+  // 读取保质期（从 settings 表）
+  const settingsShelfLife = await settingsStorage.get<number>(`shelf_life_${record.id}`);
+
   return {
     id: record.id,
     name: record.name,
@@ -430,6 +619,7 @@ async function productRecordToModel(record: any): Promise<Product> {
     isIngredientProduct: record.is_ingredient_product,
     abv: abv,
     abvManualOverride: abvManualOverride,
+    shelfLifeDays: settingsShelfLife ?? undefined,
     createdAt: new Date(record.created_at).getTime(),
     updatedAt: new Date(record.updated_at).getTime(),
   };
@@ -860,6 +1050,11 @@ export const productStorage = {
       if (product.costManualOverride && product.manualCost !== undefined) {
         await productCostStorage.set(data.id, product.manualCost, true);
       }
+
+      // 将保质期保存到 settings 表
+      if (product.shelfLifeDays !== undefined && product.shelfLifeDays > 0) {
+        await settingsStorage.set(`shelf_life_${data.id}`, product.shelfLifeDays);
+      }
       
       // 如果是原料产品，同步更新关联原料的 ABV
       if (product.isIngredientProduct && product.abv > 0) {
@@ -915,6 +1110,14 @@ export const productStorage = {
           await productCostStorage.delete(id);
         }
       }
+      // 处理保质期
+      if (updates.shelfLifeDays !== undefined) {
+        if (updates.shelfLifeDays > 0) {
+          await settingsStorage.set(`shelf_life_${id}`, updates.shelfLifeDays);
+        } else {
+          await settingsStorage.delete(`shelf_life_${id}`);
+        }
+      }
       
       const { data, error } = await client
         .from('products')
@@ -950,6 +1153,15 @@ export const productStorage = {
           await productCostStorage.set(id, newValue, true);
         } else {
           await productCostStorage.delete(id);
+        }
+      }
+
+      // 将保质期保存到 settings 表
+      if (updates.shelfLifeDays !== undefined) {
+        if (updates.shelfLifeDays > 0) {
+          await settingsStorage.set(`shelf_life_${id}`, updates.shelfLifeDays);
+        } else {
+          await settingsStorage.delete(`shelf_life_${id}`);
         }
       }
       
@@ -998,11 +1210,12 @@ export const productStorage = {
         throw new Error(`删除产品失败: ${error.message}`);
       }
       
-      // 删除 settings 中的 steps、abv、cost 和 production_logs 数据
+      // 删除 settings 中的 steps、abv、cost、production_logs 和 shelf_life 数据
       await productStepsStorage.delete(id);
       await productABVStorage.delete(id);
       await productCostStorage.delete(id);
       await productionLogStorage.delete(id);
+      await settingsStorage.delete(`shelf_life_${id}`);
       
       console.log('[productStorage.delete] 成功删除产品:', id);
       return true;

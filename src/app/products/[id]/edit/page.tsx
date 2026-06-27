@@ -57,6 +57,7 @@ export default function ProductEditPage() {
     abvManualOverride: false,
     costManualOverride: false,
     manualCost: undefined as number | undefined,
+    shelfLifeDays: undefined as number | undefined,
   });
 
   // 加载已有数据
@@ -77,6 +78,7 @@ export default function ProductEditPage() {
           abvManualOverride: product.abvManualOverride || false,
           costManualOverride: product.costManualOverride || false,
           manualCost: product.manualCost,
+          shelfLifeDays: product.shelfLifeDays,
         });
       }
     }
@@ -100,6 +102,7 @@ export default function ProductEditPage() {
         abvManualOverride: product.abvManualOverride || false,
         costManualOverride: product.costManualOverride || false,
         manualCost: product.manualCost,
+        shelfLifeDays: product.shelfLifeDays,
       });
     }
   };
@@ -435,6 +438,7 @@ export default function ProductEditPage() {
         abvManualOverride: formData.abvManualOverride,
         costManualOverride: formData.costManualOverride,
         manualCost: formData.manualCost,
+        shelfLifeDays: formData.shelfLifeDays,
       };
 
       if (isEdit) {
@@ -883,6 +887,40 @@ export default function ProductEditPage() {
                     placeholder="手动设定成本"
                   />
                 </div>
+              </div>
+
+              {/* 保质期 */}
+              <div className="mt-4">
+                <Label className="text-sm">保质期（天）</Label>
+                <div className="mt-1">
+                  <Input
+                    type="text"
+                    value={formData.shelfLifeDays !== undefined ? String(formData.shelfLifeDays) : ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '' || val === '0') {
+                        setFormData(prev => ({ ...prev, shelfLifeDays: undefined }));
+                      } else {
+                        const num = parseInt(val);
+                        if (!isNaN(num) && num > 0) {
+                          setFormData(prev => ({ ...prev, shelfLifeDays: num }));
+                        }
+                      }
+                    }}
+                    className="bg-[var(--input)] number-font w-[120px] h-8 text-sm"
+                    placeholder="不填视为无限制"
+                  />
+                </div>
+                {!formData.shelfLifeDays && (
+                  <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                    未填写保质期，视为无天数限制
+                  </p>
+                )}
+                {formData.shelfLifeDays && (
+                  <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                    产品保质期：{formData.shelfLifeDays} 天（从生产日期起算）
+                  </p>
+                )}
               </div>
             </>
           </CardContent>

@@ -3,14 +3,13 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { Wine, Beaker, Edit3, Eye } from 'lucide-react';
+import { Wine, Beaker, Edit3, Eye, ClipboardList, Package } from 'lucide-react';
 import { useMode } from '@/hooks/use-app';
 
 export function BottomNav() {
   const pathname = usePathname();
   const { mode } = useMode();
 
-  // 只显示产品库和原料库两个tab（无首页）
   const navItems = [
     {
       path: '/products',
@@ -21,6 +20,16 @@ export function BottomNav() {
       path: '/ingredients',
       label: '原料库',
       icon: Beaker,
+    },
+    {
+      path: '/tasks',
+      label: '任务',
+      icon: ClipboardList,
+    },
+    {
+      path: '/batches',
+      label: '批次',
+      icon: Package,
     },
   ];
 
