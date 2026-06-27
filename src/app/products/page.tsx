@@ -21,7 +21,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Plus, Search, Settings, ChevronRight, Edit2, Lock, Home, Trash2, List, LayoutGrid } from 'lucide-react';
+import { Plus, Search, Settings, ChevronRight, Edit2, Lock, Home, Trash2, List, LayoutGrid, ClipboardList } from 'lucide-react';
 
 export default function ProductsPage() {
   const router = useRouter();
@@ -190,6 +190,18 @@ export default function ProductsPage() {
               )}
             </div>
             <div className="flex items-center gap-1">
+              {/* 查看日志按钮 - 查阅和编辑模式都可用 */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-[var(--muted-foreground)] hover:text-[var(--primary)]"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  router.push(`/products/${product.id}/log`);
+                }}
+              >
+                <ClipboardList className="h-4 w-4" />
+              </Button>
               {isEditMode && (
                 <Button
                   variant="ghost"
@@ -275,26 +287,37 @@ export default function ProductsPage() {
               </div>
             )}
           </div>
-          {isEditMode && (
-            <div className="flex items-center justify-end gap-1 mt-2 pt-2 border-t border-[var(--border)]" onClick={(e) => e.stopPropagation()}>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-[var(--muted-foreground)] hover:text-[var(--primary)]"
-                onClick={() => router.push(`/products/${product.id}/edit`)}
-              >
-                <Edit2 className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-[var(--muted-foreground)] hover:text-[var(--destructive)]"
-                onClick={(e) => handleDelete(product.id, e)}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          )}
+          <div className="flex items-center justify-end gap-1 mt-2 pt-2 border-t border-[var(--border)]" onClick={(e) => e.stopPropagation()}>
+            {/* 查看日志按钮 - 查阅和编辑模式都可用 */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-[var(--muted-foreground)] hover:text-[var(--primary)]"
+              onClick={() => router.push(`/products/${product.id}/log`)}
+            >
+              <ClipboardList className="h-3.5 w-3.5" />
+            </Button>
+            {isEditMode && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-[var(--muted-foreground)] hover:text-[var(--primary)]"
+                  onClick={() => router.push(`/products/${product.id}/edit`)}
+                >
+                  <Edit2 className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-[var(--muted-foreground)] hover:text-[var(--destructive)]"
+                  onClick={(e) => handleDelete(product.id, e)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </>
+            )}
+          </div>
         </CardContent>
       </Card>
     );

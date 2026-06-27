@@ -78,6 +78,8 @@ export interface Product {
   steps: ProductionStep[]; // 操作步骤分组（新增）
   packageSpecs: string[]; // 包装方案ID列表
   cost: number; // 成本（自动计算）
+  costManualOverride?: boolean; // 是否手动覆盖成本
+  manualCost?: number; // 手动设定的成本值
   isIngredientProduct: boolean; // 是否为原料产品
   abv: number; // 酒精度（%），新增字段
   abvManualOverride: boolean; // 是否手动覆盖ABV
@@ -133,6 +135,30 @@ export interface PackageStock {
   specId: string; // 包装规格ID
   specName: string; // 包装规格名称
   count: number; // 装瓶数量
+}
+
+// 制作记录
+export interface ProductionLog {
+  id: string;
+  timestamp: number;                    // 制作时间（可手动修改后保存）
+  maker: string;                        // 实际制作人
+  targetOutput: number;                 // 本次出品标准量(ml)
+  ingredients: Array<{                  // 原料实际用量
+    ingredientId: string;
+    ingredientName: string;
+    unit: string;
+    plannedAmount: number;              // 计划用量（系统按出品量缩放）
+    actualAmount: number;               // 实际投入量
+  }>;
+  stepResults: Array<{                  // 有损耗步骤的实际结果液重
+    stepIndex: number;
+    methodName: string;
+    plannedResultWeight: number;        // 计划结果液重
+    actualResultWeight: number;         // 实际结果液重
+  }>;
+  actualFinalOutput: number;            // 实际成品出品量
+  actualCost: number;                   // 实际总成本
+  standardCost: number;                 // 标准成本（本次出品量对应的）
 }
 
 // 默认全局配置

@@ -55,6 +55,8 @@ export default function ProductEditPage() {
     isIngredientProduct: false,
     abv: 0,
     abvManualOverride: false,
+    costManualOverride: false,
+    manualCost: undefined as number | undefined,
   });
 
   // 加载已有数据
@@ -73,6 +75,8 @@ export default function ProductEditPage() {
           isIngredientProduct: product.isIngredientProduct,
           abv: product.abv || 0,
           abvManualOverride: product.abvManualOverride || false,
+          costManualOverride: product.costManualOverride || false,
+          manualCost: product.manualCost,
         });
       }
     }
@@ -94,6 +98,8 @@ export default function ProductEditPage() {
         isIngredientProduct: product.isIngredientProduct,
         abv: product.abv || 0,
         abvManualOverride: product.abvManualOverride || false,
+        costManualOverride: product.costManualOverride || false,
+        manualCost: product.manualCost,
       });
     }
   };
@@ -319,6 +325,24 @@ export default function ProductEditPage() {
     });
   };
 
+  // 手动设定成本
+  const handleManualCostChange = (value: number) => {
+    setFormData({
+      ...formData,
+      manualCost: value,
+      costManualOverride: true,
+    });
+  };
+
+  // 重置成本为自动计算
+  const resetCostToAuto = () => {
+    setFormData({
+      ...formData,
+      manualCost: undefined,
+      costManualOverride: false,
+    });
+  };
+
   // 提交表单（异步）
   const handleSubmit = async () => {
     // 验证
@@ -409,6 +433,8 @@ export default function ProductEditPage() {
         isIngredientProduct: formData.isIngredientProduct,
         abv: displayABV,
         abvManualOverride: formData.abvManualOverride,
+        costManualOverride: formData.costManualOverride,
+        manualCost: formData.manualCost,
       };
 
       if (isEdit) {
@@ -814,17 +840,51 @@ export default function ProductEditPage() {
               </>
             )}
 
-            {previewCost > 0 && (
-              <>
-                <Separator />
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-[var(--muted-foreground)]">成本预览</span>
-                  <span className="number-font text-[var(--primary)] font-medium">
-                    ¥{previewCost.toFixed(2)}
-                  </span>
+            {/* 成本区域 */}
+            <>
+              <Separator />
+              <div className="p-3 rounded-lg bg-[var(--muted)]">
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="text-sm">成本预览</Label>
+                  {formData.costManualOverride && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 text-xs"
+                      onClick={resetCostToAuto}
+                    >
+                      重置为自动
+                    </Button>
+                  )}
                 </div>
-              </>
-            )}
+                <div className="flex items-center gap-2">
+                  <span className="number-font text-lg text-[var(--primary)]">
+                    ¥{(formData.costManualOverride && formData.manualCost !== undefined ? formData.manualCost : previewCost).toFixed(2)}
+                  </span>
+                  {formData.costManualOverride && (
+                    <span className="text-xs text-[var(--muted-foreground)]">(已手动设定)</span>
+                  )}
+                </div>
+                {!formData.costManualOverride && previewCost > 0 && (
+                  <div className="text-xs text-[var(--muted-foreground)] mt-1">
+                    参照当前成品标准进行成本计算
+                  </div>
+                )}
+                <div className="mt-2">
+                  <Input
+                    type="text"
+                    value={numVal('manualCost', formData.manualCost)}
+                    onChange={(e) => {
+                      const val = handleNumberInput(e.target.value, numVal('manualCost', formData.manualCost));
+                      setNumVal('manualCost', val);
+                      handleManualCostChange(parseFloat(val) || 0);
+                    }}
+                    className="bg-[var(--input)] number-font w-[100px] h-8 text-sm"
+                    placeholder="手动设定成本"
+                  />
+                </div>
+              </div>
+            </>
           </CardContent>
         </Card>
 

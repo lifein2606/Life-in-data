@@ -15,7 +15,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { ChevronLeft, Edit2, Plus, Minus, Lock } from 'lucide-react';
+import { ChevronLeft, Edit2, Plus, Minus, Lock, ClipboardList } from 'lucide-react';
 import { PackageStock, ProductionStep } from '@/types';
 import { costCalculator } from '@/lib/storage';
 
@@ -75,11 +75,14 @@ export default function ProductDetailPage() {
     return costCalculator.scaleIngredients(product, targetOutput);
   }, [product, targetOutput]);
 
-  // 计算总成本
+  // 计算总成本（优先使用手动覆盖值）
   const scaledCost = useMemo(() => {
     if (!product || targetOutput <= 0) return 0;
     const scale = targetOutput / product.standardOutput;
-    return product.cost * scale;
+    const baseCost = (product.costManualOverride && product.manualCost !== undefined)
+      ? product.manualCost
+      : product.cost;
+    return baseCost * scale;
   }, [product, targetOutput]);
 
   // 获取分类名称
@@ -343,6 +346,17 @@ export default function ProductDetailPage() {
             <ChevronLeft className="h-6 w-6" />
           </Button>
           <h1 className="text-lg font-semibold truncate max-w-[200px]">{product.name}</h1>
+          {/* 修改日志按钮 - 仅编辑模式显示 */}
+          {isEditMode && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => router.push(`/products/${productId}/log`)}
+              className="h-10 w-10"
+            >
+              <ClipboardList className="h-5 w-5 text-[var(--primary)]" />
+            </Button>
+          )}
           {/* 编辑按钮 - 只有编辑模式显示 */}
           {isEditMode ? (
             <Button
@@ -478,9 +492,14 @@ export default function ProductDetailPage() {
 
               <div className="flex items-center justify-between">
                 <span className="text-sm">预估成本</span>
-                <span className="number-font text-[var(--primary)] font-medium">
-                  ¥{scaledCost.toFixed(2)}
-                </span>
+                <div className="flex items-center gap-1">
+                  <span className="number-font text-[var(--primary)] font-medium">
+                    ¥{scaledCost.toFixed(2)}
+                  </span>
+                  {product.costManualOverride && (
+                    <span className="text-xs text-[var(--muted-foreground)]">(手动)</span>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>

@@ -14,6 +14,7 @@ import {
   StepIngredient,
   IngredientSource,
   IngredientUnit,
+  ProductionLog,
 } from '@/types';
 
 // Supabase 客户端获取函数（延迟初始化，仅在客户端）
@@ -158,6 +159,40 @@ export const productABVStorage = {
   // 删除产品酒精度
   async delete(productId: string): Promise<void> {
     await settingsStorage.delete(`product_abv_${productId}`);
+  },
+};
+
+// ========== 产品手动成本 ==========
+export const productCostStorage = {
+  async get(productId: string): Promise<{ value: number; manual: boolean } | null> {
+    const data = await settingsStorage.get<{ value: number; manual: boolean }>(`product_cost_${productId}`);
+    return data ?? null;
+  },
+  async set(productId: string, value: number, manual: boolean): Promise<void> {
+    if (value > 0 || manual) {
+      await settingsStorage.set(`product_cost_${productId}`, { value, manual });
+    } else {
+      await settingsStorage.delete(`product_cost_${productId}`);
+    }
+  },
+  async delete(productId: string): Promise<void> {
+    await settingsStorage.delete(`product_cost_${productId}`);
+  },
+};
+
+// ========== 制作记录 ==========
+export const productionLogStorage = {
+  async get(productId: string): Promise<ProductionLog[]> {
+    const data = await settingsStorage.get<ProductionLog[]>(`production_logs_${productId}`);
+    return data || [];
+  },
+  async add(productId: string, log: ProductionLog): Promise<void> {
+    const logs = await this.get(productId);
+    logs.push(log);
+    await settingsStorage.set(`production_logs_${productId}`, logs);
+  },
+  async delete(productId: string): Promise<void> {
+    await settingsStorage.delete(`production_logs_${productId}`);
   },
 };
 
@@ -371,6 +406,15 @@ async function productRecordToModel(record: any): Promise<Product> {
     abvManualOverride = settingsABV.manual;
   }
   
+  // 尝试从 settings 表读取手动成本数据
+  let costManualOverride = false;
+  let manualCost: number | undefined;
+  const settingsCost = await productCostStorage.get(record.id);
+  if (settingsCost) {
+    costManualOverride = settingsCost.manual;
+    manualCost = settingsCost.value;
+  }
+  
   return {
     id: record.id,
     name: record.name,
@@ -381,6 +425,8 @@ async function productRecordToModel(record: any): Promise<Product> {
     steps: steps,
     packageSpecs: record.package_specs || [],
     cost: 0, // 成本需要实时计算
+    costManualOverride: costManualOverride,
+    manualCost: manualCost,
     isIngredientProduct: record.is_ingredient_product,
     abv: abv,
     abvManualOverride: abvManualOverride,
@@ -810,6 +856,11 @@ export const productStorage = {
       // 将 ABV 保存到 settings 表
       await productABVStorage.set(data.id, product.abv || 0, product.abvManualOverride || false);
       
+      // 将手动成本保存到 settings 表
+      if (product.costManualOverride && product.manualCost !== undefined) {
+        await productCostStorage.set(data.id, product.manualCost, true);
+      }
+      
       // 如果是原料产品，同步更新关联原料的 ABV
       if (product.isIngredientProduct && product.abv > 0) {
         // 查找关联的原料
@@ -853,6 +904,17 @@ export const productStorage = {
         const newManual = updates.abvManualOverride !== undefined ? updates.abvManualOverride : (current?.manual ?? false);
         await productABVStorage.set(id, newAbv, newManual);
       }
+      // 处理手动成本覆盖
+      if (updates.costManualOverride !== undefined || updates.manualCost !== undefined) {
+        const current = await productCostStorage.get(id);
+        const newManual = updates.costManualOverride ?? current?.manual ?? false;
+        const newValue = updates.manualCost ?? current?.value ?? 0;
+        if (newManual) {
+          await productCostStorage.set(id, newValue, true);
+        } else {
+          await productCostStorage.delete(id);
+        }
+      }
       
       const { data, error } = await client
         .from('products')
@@ -877,6 +939,18 @@ export const productStorage = {
         const newAbv = updates.abv ?? current?.value ?? 0;
         const newManual = updates.abvManualOverride ?? current?.manual ?? false;
         await productABVStorage.set(id, newAbv, newManual);
+      }
+      
+      // 将手动成本保存到 settings 表
+      if (updates.costManualOverride !== undefined || updates.manualCost !== undefined) {
+        const current = await productCostStorage.get(id);
+        const newManual = updates.costManualOverride ?? current?.manual ?? false;
+        const newValue = updates.manualCost ?? current?.value ?? 0;
+        if (newManual) {
+          await productCostStorage.set(id, newValue, true);
+        } else {
+          await productCostStorage.delete(id);
+        }
       }
       
       // 如果是原料产品，同步更新关联原料的 ABV
@@ -924,9 +998,11 @@ export const productStorage = {
         throw new Error(`删除产品失败: ${error.message}`);
       }
       
-      // 删除 settings 中的 steps 和 abv 数据
+      // 删除 settings 中的 steps、abv、cost 和 production_logs 数据
       await productStepsStorage.delete(id);
       await productABVStorage.delete(id);
+      await productCostStorage.delete(id);
+      await productionLogStorage.delete(id);
       
       console.log('[productStorage.delete] 成功删除产品:', id);
       return true;
