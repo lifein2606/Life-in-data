@@ -15,6 +15,8 @@ import {
   IngredientSource,
   IngredientUnit,
   ProductionLog,
+  Batch,
+  ProductionTask,
   OperationPlanInstance,
   OperationPlanTemplate,
 } from '@/types';
@@ -213,6 +215,129 @@ export const productionLogStorage = {
   },
   async delete(productId: string): Promise<void> {
     await settingsStorage.delete(`production_logs_${productId}`);
+  },
+};
+
+// ========== 批次管理 ==========
+export const batchStorage = {
+  async getAll(): Promise<Batch[]> {
+    const data = await settingsStorage.get<Batch[]>('all_batches');
+    return data || [];
+  },
+  async getByProduct(productId: string): Promise<Batch[]> {
+    const all = await this.getAll();
+    return all.filter(b => b.productId === productId).sort((a, b) => b.productionDate - a.productionDate);
+  },
+  async getById(batchId: string): Promise<Batch | null> {
+    const all = await this.getAll();
+    return all.find(b => b.id === batchId) || null;
+  },
+  async create(batch: Batch): Promise<void> {
+    const all = await this.getAll();
+    all.push(batch);
+    await settingsStorage.set('all_batches', all);
+  },
+  async update(batchId: string, updates: Partial<Batch>): Promise<void> {
+    const all = await this.getAll();
+    const idx = all.findIndex(b => b.id === batchId);
+    if (idx >= 0) {
+      all[idx] = { ...all[idx], ...updates };
+      await settingsStorage.set('all_batches', all);
+    }
+  },
+  async addBottlingRecord(batchId: string, record: import('@/types').BottlingRecord): Promise<void> {
+    const all = await this.getAll();
+    const batch = all.find(b => b.id === batchId);
+    if (batch) {
+      batch.bottlingRecords.push(record);
+      batch.bottledAmount += record.totalAmount;
+      batch.remainingAmount -= (record.totalAmount + record.wastageAmount);
+      if (batch.remainingAmount <= 0) {
+        batch.remainingAmount = 0;
+        batch.status = 'completed';
+      } else if (batch.bottledAmount > 0) {
+        batch.status = 'partial';
+      }
+      await settingsStorage.set('all_batches', all);
+    }
+  },
+  async addSpoilageRecord(batchId: string, record: import('@/types').SpoilageRecord): Promise<void> {
+    const all = await this.getAll();
+    const batch = all.find(b => b.id === batchId);
+    if (batch) {
+      batch.spoilageRecords.push(record);
+      batch.remainingAmount -= record.amount;
+      if (batch.remainingAmount <= 0) {
+        batch.remainingAmount = 0;
+        if (batch.bottledAmount > 0) {
+          batch.status = 'cleared';
+        } else {
+          batch.status = 'completed';
+        }
+      }
+      await settingsStorage.set('all_batches', all);
+    }
+  },
+  async markCleared(batchId: string): Promise<void> {
+    await this.update(batchId, { status: 'cleared', remainingAmount: 0 });
+  },
+  async deductAmount(batchId: string, amount: number): Promise<void> {
+    const all = await this.getAll();
+    const batch = all.find(b => b.id === batchId);
+    if (batch) {
+      batch.remainingAmount -= amount;
+      if (batch.remainingAmount <= 0) {
+        batch.remainingAmount = 0;
+        batch.status = batch.bottledAmount > 0 ? 'cleared' : 'completed';
+      }
+      await settingsStorage.set('all_batches', all);
+    }
+  },
+};
+
+// ========== 制作任务 ==========
+export const taskStorage = {
+  async getAll(): Promise<ProductionTask[]> {
+    const data = await settingsStorage.get<ProductionTask[]>('all_tasks');
+    return data || [];
+  },
+  async getById(taskId: string): Promise<ProductionTask | null> {
+    const all = await this.getAll();
+    return all.find(t => t.id === taskId) || null;
+  },
+  async create(task: ProductionTask): Promise<void> {
+    const all = await this.getAll();
+    all.push(task);
+    await settingsStorage.set('all_tasks', all);
+  },
+  async update(taskId: string, updates: Partial<ProductionTask>): Promise<void> {
+    const all = await this.getAll();
+    const idx = all.findIndex(t => t.id === taskId);
+    if (idx >= 0) {
+      all[idx] = { ...all[idx], ...updates };
+      await settingsStorage.set('all_tasks', all);
+    }
+  },
+  async updateTaskItem(taskId: string, itemId: string, updates: Partial<import('@/types').ProductionTaskItem>): Promise<void> {
+    const all = await this.getAll();
+    const task = all.find(t => t.id === taskId);
+    if (task) {
+      const item = task.items.find(i => i.id === itemId);
+      if (item) {
+        Object.assign(item, updates);
+        const allDone = task.items.every(i => i.productStatus === 'done' || i.productStatus === 'cancelled');
+        if (allDone) {
+          task.status = 'completed';
+        } else if (task.status === 'not_started') {
+          task.status = 'in_progress';
+        }
+        await settingsStorage.set('all_tasks', all);
+      }
+    }
+  },
+  async delete(taskId: string): Promise<void> {
+    const all = await this.getAll();
+    await settingsStorage.set('all_tasks', all.filter(t => t.id !== taskId));
   },
 };
 
