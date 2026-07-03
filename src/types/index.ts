@@ -199,6 +199,137 @@ export interface ProductionLog {
   standardCost: number;                 // 标准成本（本次出品量对应的）
 }
 
+// ========== 批次追踪 ==========
+export interface Batch {
+  id: string;
+  productId: string;
+  productionDate: number;
+  totalProduced: number;
+  bottledAmount: number;
+  remainingAmount: number;
+  status: 'pending' | 'partial' | 'completed' | 'cleared';
+  shelfLifeExpiry?: number;
+  bottlingRecords: BottlingRecord[];
+  spoilageRecords: SpoilageRecord[];
+  sourceLogId?: string;
+  sourceTaskId?: string;
+}
+
+export interface BottlingRecord {
+  id: string;
+  date: number;
+  specId: string;
+  specName: string;
+  specVolume: number;
+  count: number;
+  totalAmount: number;
+  wastageAmount: number;
+}
+
+export interface SpoilageRecord {
+  id: string;
+  date: number;
+  amount: number;
+  reason: string;
+  remark: string;
+}
+
+// ========== 要货单 ==========
+export interface Order {
+  id: string;
+  createdAt: number;
+  customerName: string;
+  items: OrderItem[];
+  status: 'pending' | 'partial' | 'completed';
+  deliveredItems: DeliveredItem[];
+  relatedTaskIds: string[];
+  remark: string;
+}
+
+export interface OrderItem {
+  id: string;
+  productId: string;
+  productName: string;
+  specId: string;
+  specName: string;
+  specVolume: number;
+  quantity: number;
+  totalVolume: number;
+  deliveredQuantity: number;
+}
+
+export interface DeliveredItem {
+  id: string;
+  date: number;
+  productId: string;
+  productName: string;
+  quantity: number;
+  unit: string;
+  batchAllocations: BatchAllocation[];
+}
+
+export interface BatchAllocation {
+  batchId: string;
+  amount: number;
+}
+
+// ========== 制作任务 ==========
+export type TaskStatus = 'not_started' | 'in_progress' | 'completed';
+export type ProductTaskStatus = 'prep' | 'producing' | 'bottling' | 'done' | 'cancelled';
+
+export interface ProductionTask {
+  id: string;
+  createdAt: number;
+  remark: string;
+  status: TaskStatus;
+  sourceOrderId?: string;
+  items: ProductionTaskItem[];
+}
+
+export interface ProductionTaskItem {
+  id: string;
+  productId: string;
+  productName: string;
+  plannedAmount: number;
+  plannedSpecs: PlannedSpec[];
+  productStatus: ProductTaskStatus;
+  ingredientChecklist: IngredientChecklistItem[];
+  prepCompleted: boolean;
+  sourceBatchIds: string[];
+  failureRecords: FailureRecord[];
+  bottlingRecordIds: string[];
+}
+
+export interface PlannedSpec {
+  specId: string;
+  specName: string;
+  specVolume: number;
+  count: number;
+}
+
+export interface IngredientChecklistItem {
+  ingredientId: string;
+  ingredientName: string;
+  requiredAmount: number;
+  unit: string;
+  checked: boolean;
+}
+
+export interface FailureRecord {
+  id: string;
+  date: number;
+  maker: string;
+  remark: string;
+  spoiledIngredients: Array<{
+    ingredientId: string;
+    ingredientName: string;
+    amount: number;
+    unit: string;
+    cost: number;
+  }>;
+  totalCost: number;
+}
+
 // 默认全局配置
 export const DEFAULT_CONFIG: GlobalConfig = {
   password: '123456', // 默认密码
