@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { GlobalConfig, DEFAULT_CONFIG, Ingredient, Product, ProductStock } from '@/types';
+import { GlobalConfig, DEFAULT_CONFIG, Ingredient, Product, ProductStock, OperationPlanInstance } from '@/types';
 import { configStorage, ingredientStorage, productStorage, stockStorage, costCalculator } from '@/lib/storage';
 
 // 应用模式：编辑模式或查阅模式
@@ -51,10 +51,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         stockStorage.getAll(),
       ]);
       
-      // 计算产品成本
+      // 计算产品成本（优先使用手动覆盖值）
       const productsWithCost = productsData.map(product => ({
         ...product,
-        cost: costCalculator.calculateProductCost(product, ingredientsData),
+        cost: product.costManualOverride && product.manualCost !== undefined 
+          ? product.manualCost 
+          : costCalculator.calculateProductCost(product, ingredientsData),
       }));
       
       setConfig(configData);
@@ -208,6 +210,9 @@ export function useProducts() {
   const { products, ingredients, stocks, refreshData } = useApp();
 
   const getProductCost = (product: Product) => {
+    if (product.costManualOverride && product.manualCost !== undefined) {
+      return product.manualCost;
+    }
     return costCalculator.calculateProductCost(product, ingredients);
   };
 
@@ -280,9 +285,11 @@ export function useProducts() {
       const wasIngredientProduct = product.isIngredientProduct;
       const nowIngredientProduct = data.isIngredientProduct !== undefined ? data.isIngredientProduct : wasIngredientProduct;
       
-      // 计算当前成本
+      // 计算当前成本（优先使用手动覆盖值）
       const updatedProduct = updated || product;
-      const currentCost = costCalculator.calculateProductCost(updatedProduct, latestIngredients);
+      const currentCost = (updatedProduct.costManualOverride && updatedProduct.manualCost !== undefined)
+        ? updatedProduct.manualCost
+        : costCalculator.calculateProductCost(updatedProduct, latestIngredients);
       
       if (nowIngredientProduct && !wasIngredientProduct) {
         // 产品新勾选了'原料产品'，创建对应的原料

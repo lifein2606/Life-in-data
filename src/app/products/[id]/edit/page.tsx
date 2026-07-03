@@ -18,10 +18,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Combobox, ComboboxOption } from '@/components/ui/combobox';
+import { Combobox, ComboboxOption, MultiCombobox } from '@/components/ui/combobox';
 import { PasswordDialog } from '@/components/password-dialog';
 import { ChevronLeft, Save, Plus, Trash2, AlertCircle, CheckCircle } from 'lucide-react';
-import { ProductIngredient, ProductionStep, StepIngredient, Method } from '@/types';
+import { ProductIngredient, ProductionStep, StepIngredient, Method, OperationPlanInstance } from '@/types';
 import { generateId, dependencyChecker } from '@/lib/storage';
 
 export default function ProductEditPage() {
@@ -53,11 +53,11 @@ export default function ProductEditPage() {
     steps: [] as ProductionStep[],           // 新的步骤分组结构
     packageSpecs: [] as string[],
     isIngredientProduct: false,
+    operationPlans: [] as OperationPlanInstance[], // 具体操作方案
     abv: 0,
     abvManualOverride: false,
     costManualOverride: false,
     manualCost: undefined as number | undefined,
-    shelfLifeDays: undefined as number | undefined,
   });
 
   // 加载已有数据
@@ -74,11 +74,11 @@ export default function ProductEditPage() {
           steps: product.steps || [],
           packageSpecs: product.packageSpecs || [],
           isIngredientProduct: product.isIngredientProduct,
+          operationPlans: product.operationPlans || [],
           abv: product.abv || 0,
           abvManualOverride: product.abvManualOverride || false,
           costManualOverride: product.costManualOverride || false,
           manualCost: product.manualCost,
-          shelfLifeDays: product.shelfLifeDays,
         });
       }
     }
@@ -98,11 +98,11 @@ export default function ProductEditPage() {
         steps: product.steps || [],
         packageSpecs: product.packageSpecs || [],
         isIngredientProduct: product.isIngredientProduct,
+        operationPlans: product.operationPlans || [],
         abv: product.abv || 0,
         abvManualOverride: product.abvManualOverride || false,
         costManualOverride: product.costManualOverride || false,
         manualCost: product.manualCost,
-        shelfLifeDays: product.shelfLifeDays,
       });
     }
   };
@@ -346,6 +346,79 @@ export default function ProductEditPage() {
     });
   };
 
+  // ========== 操作方案相关操作 ==========
+
+  // 添加操作方案
+  const addOperationPlan = (templateId: string) => {
+    const template = (config.operationPlanTemplates || []).find((t) => t.id === templateId);
+    if (!template) return;
+    // 检查是否已添加
+    if (formData.operationPlans.some((p) => p.templateId === templateId)) return;
+    // 初始化默认值
+    const fieldValues: Record<string, any> = {};
+    for (const field of template.fields) {
+      switch (field.type) {
+        case 'duration':
+          fieldValues[field.id] = { value: 0, unit: field.unit || '分钟' };
+          break;
+        case 'temperature':
+          fieldValues[field.id] = { value: 0, unit: field.unit || '°C' };
+          break;
+        case 'ingredient':
+          fieldValues[field.id] = [];
+          break;
+        case 'text':
+          fieldValues[field.id] = '';
+          break;
+        case 'select':
+          fieldValues[field.id] = '';
+          break;
+        case 'multiselect':
+          fieldValues[field.id] = [];
+          break;
+      }
+    }
+    const newInstance: OperationPlanInstance = {
+      templateId: template.id,
+      templateName: template.name,
+      fieldValues,
+    };
+    setFormData({
+      ...formData,
+      operationPlans: [...formData.operationPlans, newInstance],
+    });
+  };
+
+  // 删除操作方案
+  const removeOperationPlan = (templateId: string) => {
+    setFormData({
+      ...formData,
+      operationPlans: formData.operationPlans.filter((p) => p.templateId !== templateId),
+    });
+  };
+
+  // 更新操作方案字段值
+  const updateOperationPlanField = (templateId: string, fieldId: string, value: any) => {
+    setFormData({
+      ...formData,
+      operationPlans: formData.operationPlans.map((p) =>
+        p.templateId === templateId
+          ? { ...p, fieldValues: { ...p.fieldValues, [fieldId]: value } }
+          : p
+      ),
+    });
+  };
+
+  // 可添加的操作方案模板（已启用的、且尚未添加的）
+  const availableTemplates = (config.operationPlanTemplates || []).filter(
+    (t) => t.enabled && !formData.operationPlans.some((p) => p.templateId === t.id)
+  );
+
+  // 时长单位选项
+  const durationUnitOptions = ['分钟', '小时', '天'];
+  // 温度单位选项
+  const temperatureUnitOptions = ['°C', '°F'];
+
   // 提交表单（异步）
   const handleSubmit = async () => {
     // 验证
@@ -434,11 +507,11 @@ export default function ProductEditPage() {
         ingredients: formData.ingredients,
         packageSpecs: formData.packageSpecs,
         isIngredientProduct: formData.isIngredientProduct,
+        operationPlans: formData.operationPlans,
         abv: displayABV,
         abvManualOverride: formData.abvManualOverride,
         costManualOverride: formData.costManualOverride,
         manualCost: formData.manualCost,
-        shelfLifeDays: formData.shelfLifeDays,
       };
 
       if (isEdit) {
@@ -888,40 +961,6 @@ export default function ProductEditPage() {
                   />
                 </div>
               </div>
-
-              {/* 保质期 */}
-              <div className="mt-4">
-                <Label className="text-sm">保质期（天）</Label>
-                <div className="mt-1">
-                  <Input
-                    type="text"
-                    value={formData.shelfLifeDays !== undefined ? String(formData.shelfLifeDays) : ''}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === '' || val === '0') {
-                        setFormData(prev => ({ ...prev, shelfLifeDays: undefined }));
-                      } else {
-                        const num = parseInt(val);
-                        if (!isNaN(num) && num > 0) {
-                          setFormData(prev => ({ ...prev, shelfLifeDays: num }));
-                        }
-                      }
-                    }}
-                    className="bg-[var(--input)] number-font w-[120px] h-8 text-sm"
-                    placeholder="不填视为无限制"
-                  />
-                </div>
-                {!formData.shelfLifeDays && (
-                  <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                    未填写保质期，视为无天数限制
-                  </p>
-                )}
-                {formData.shelfLifeDays && (
-                  <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                    产品保质期：{formData.shelfLifeDays} 天（从生产日期起算）
-                  </p>
-                )}
-              </div>
             </>
           </CardContent>
         </Card>
@@ -949,6 +988,195 @@ export default function ProductEditPage() {
                   </button>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 具体操作方案 - 仅原料产品显示 */}
+        {formData.isIngredientProduct && (
+          <Card className="glass-card">
+            <CardHeader className="pb-3 flex flex-row items-center justify-between">
+              <CardTitle className="text-base">具体操作方案</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {/* 添加方案按钮 */}
+              {availableTemplates.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-sm text-[var(--muted-foreground)]">添加操作方案</Label>
+                  <Combobox
+                    options={availableTemplates.filter((t) => t.id).map((t) => ({
+                      value: t.id,
+                      label: t.name,
+                    }))}
+                    value=""
+                    onChange={addOperationPlan}
+                    placeholder="选择方案..."
+                    searchPlaceholder="搜索方案..."
+                    className="bg-[var(--input)]"
+                  />
+                </div>
+              )}
+
+              {/* 已添加的方案 */}
+              {formData.operationPlans.length === 0 ? (
+                <div className="text-center py-4 text-[var(--muted-foreground)]">
+                  暂无操作方案，请在管理页面创建并启用方案模板后在此添加
+                </div>
+              ) : (
+                formData.operationPlans.map((plan) => {
+                  const template = (config.operationPlanTemplates || []).find((t) => t.id === plan.templateId);
+                  if (!template) return null;
+                  return (
+                    <div key={plan.templateId} className="p-3 rounded-lg bg-[var(--muted)] space-y-2">
+                      {/* 方案头部 */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">{plan.templateName}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeOperationPlan(plan.templateId)}
+                          className="h-6 w-6"
+                        >
+                          <Trash2 className="h-3 w-3 text-[var(--destructive)]" />
+                        </Button>
+                      </div>
+
+                      {/* 字段列表 */}
+                      <div className="space-y-2 pl-2">
+                        {template.fields.map((field) => {
+                          const value = plan.fieldValues[field.id];
+                          return (
+                            <div key={field.id} className="space-y-1">
+                              <Label className="text-xs">{field.name}</Label>
+                              {/* 时长类型 */}
+                              {field.type === 'duration' && (
+                                <div className="flex items-center gap-2">
+                                  <Input
+                                    type="text"
+                                    value={numVal(`op-${plan.templateId}-${field.id}`, value?.value)}
+                                    onChange={(e) => {
+                                      const val = handleNumberInput(e.target.value, numVal(`op-${plan.templateId}-${field.id}`, value?.value));
+                                      setNumVal(`op-${plan.templateId}-${field.id}`, val);
+                                      updateOperationPlanField(plan.templateId, field.id, { value: parseFloat(val) || 0, unit: value?.unit || field.unit || '分钟' });
+                                    }}
+                                    className="bg-[var(--input)] number-font h-8 text-sm w-[100px]"
+                                  />
+                                  <Select
+                                    value={value?.unit || field.unit || '分钟'}
+                                    onValueChange={(v) => updateOperationPlanField(plan.templateId, field.id, { ...value, unit: v })}
+                                  >
+                                    <SelectTrigger className="bg-[var(--input)] h-8 w-[90px]">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {durationUnitOptions.map((u) => (
+                                        <SelectItem key={u} value={u}>{u}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              )}
+                              {/* 温度类型 */}
+                              {field.type === 'temperature' && (
+                                <div className="flex items-center gap-2">
+                                  <Input
+                                    type="text"
+                                    value={numVal(`op-${plan.templateId}-${field.id}`, value?.value)}
+                                    onChange={(e) => {
+                                      const val = handleNumberInput(e.target.value, numVal(`op-${plan.templateId}-${field.id}`, value?.value));
+                                      setNumVal(`op-${plan.templateId}-${field.id}`, val);
+                                      updateOperationPlanField(plan.templateId, field.id, { value: parseFloat(val) || 0, unit: value?.unit || field.unit || '°C' });
+                                    }}
+                                    className="bg-[var(--input)] number-font h-8 text-sm w-[100px]"
+                                  />
+                                  <Select
+                                    value={value?.unit || field.unit || '°C'}
+                                    onValueChange={(v) => updateOperationPlanField(plan.templateId, field.id, { ...value, unit: v })}
+                                  >
+                                    <SelectTrigger className="bg-[var(--input)] h-8 w-[90px]">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {temperatureUnitOptions.map((u) => (
+                                        <SelectItem key={u} value={u}>{u}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              )}
+                              {/* 原料选择类型 */}
+                              {field.type === 'ingredient' && (
+                                <MultiCombobox
+                                  options={ingredients.filter((ing) => ing.id).map((ing) => ({
+                                    value: ing.id,
+                                    label: `${ing.name} (${ing.category})`,
+                                  }))}
+                                  value={value || []}
+                                  onChange={(v) => updateOperationPlanField(plan.templateId, field.id, v)}
+                                  placeholder="选择原料..."
+                                  searchPlaceholder="搜索原料..."
+                                  className="bg-[var(--input)] h-8 text-sm"
+                                />
+                              )}
+                              {/* 文本类型 */}
+                              {field.type === 'text' && (
+                                <Input
+                                  value={value || ''}
+                                  onChange={(e) => updateOperationPlanField(plan.templateId, field.id, e.target.value)}
+                                  className="bg-[var(--input)] h-8 text-sm"
+                                  placeholder="输入文本..."
+                                />
+                              )}
+                              {/* 自定义下拉类型 */}
+                              {field.type === 'select' && (
+                                <Select
+                                  value={value || ''}
+                                  onValueChange={(v) => updateOperationPlanField(plan.templateId, field.id, v)}
+                                >
+                                  <SelectTrigger className="bg-[var(--input)] h-8 text-sm">
+                                    <SelectValue placeholder="请选择..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {(field.options || []).map((opt) => (
+                                      <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              )}
+                              {/* 自定义复选类型 */}
+                              {field.type === 'multiselect' && (
+                                <div className="flex flex-wrap gap-1">
+                                  {(field.options || []).map((opt) => (
+                                    <button
+                                      key={opt}
+                                      type="button"
+                                      className={`inline-flex items-center justify-center rounded-full border px-2 py-0.5 text-xs font-medium transition-all ${
+                                        (value || []).includes(opt)
+                                          ? 'bg-[var(--primary)] text-[var(--primary-foreground)] border-transparent'
+                                          : 'bg-transparent text-[var(--foreground)] border-[var(--border)] hover:bg-[var(--accent)]'
+                                      }`}
+                                      onClick={() => {
+                                        const current = value || [];
+                                        if (current.includes(opt)) {
+                                          updateOperationPlanField(plan.templateId, field.id, current.filter((v: string) => v !== opt));
+                                        } else {
+                                          updateOperationPlanField(plan.templateId, field.id, [...current, opt]);
+                                        }
+                                      }}
+                                    >
+                                      {opt}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </CardContent>
           </Card>
         )}

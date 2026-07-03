@@ -1,3 +1,39 @@
+// 操作方案字段类型
+export type OperationFieldType = 'duration' | 'temperature' | 'ingredient' | 'text' | 'select' | 'multiselect';
+
+// 操作方案字段定义（模板中）
+export interface OperationFieldDef {
+  id: string;
+  name: string;           // 字段名（如"时间"、"温度"、"切块"）
+  type: OperationFieldType;
+  options?: string[];     // select/multiselect 的可选项列表
+  unit?: string;          // duration: '分钟'|'小时'|'天', temperature: '°C'|'°F'
+  decimalPlaces: number;  // 小数位数，默认2
+}
+
+// 操作方案模板（在系统管理页面管理）
+export interface OperationPlanTemplate {
+  id: string;
+  name: string;           // 方案名（如"冷浸泡"、"糖浆熬制"）
+  fields: OperationFieldDef[];  // 该方案包含的字段定义
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// 操作方案实例（在产品上填写的实际值）
+export interface OperationPlanInstance {
+  templateId: string;
+  templateName: string;    // 冗余存储模板名
+  fieldValues: Record<string, any>;  // key=fieldDef.id
+  // duration: { value: number, unit: string }
+  // temperature: { value: number, unit: string }
+  // ingredient: string[] (ingredient IDs)
+  // text: string
+  // select: string (selected option value)
+  // multiselect: string[] (selected option values)
+}
+
 // 全局配置类型
 export interface GlobalConfig {
   password: string; // 全局密码
@@ -8,6 +44,7 @@ export interface GlobalConfig {
   ingredientCategories: Category[]; // 原料分类
   ingredientSources: IngredientSource[]; // 原料来源
   ingredientUnits: IngredientUnit[]; // 原料单位
+  operationPlanTemplates: OperationPlanTemplate[]; // 操作方案模板
 }
 
 export interface PackageSpec {
@@ -81,9 +118,9 @@ export interface Product {
   costManualOverride?: boolean; // 是否手动覆盖成本
   manualCost?: number; // 手动设定的成本值
   isIngredientProduct: boolean; // 是否为原料产品
+  operationPlans?: OperationPlanInstance[]; // 具体操作方案（仅原料产品使用）
   abv: number; // 酒精度（%），新增字段
   abvManualOverride: boolean; // 是否手动覆盖ABV
-  shelfLifeDays?: number; // 保质期天数（选填，不填视为无限制）
   createdAt: number;
   updatedAt: number;
 }
@@ -162,137 +199,6 @@ export interface ProductionLog {
   standardCost: number;                 // 标准成本（本次出品量对应的）
 }
 
-// ========== 批次追踪 ==========
-export interface Batch {
-  id: string;
-  productId: string;
-  productionDate: number;          // 生产日期（timestamp）
-  totalProduced: number;           // 总产量（ml，来自制作记录的实际产量）
-  bottledAmount: number;           // 已灌装量（ml）
-  remainingAmount: number;         // 剩余可灌装量（ml）
-  status: 'pending' | 'partial' | 'completed' | 'cleared';  // 待灌装/部分灌装/已灌完/已清
-  shelfLifeExpiry?: number;        // 保质期截止（timestamp），无保质期则为 undefined
-  bottlingRecords: BottlingRecord[];
-  spoilageRecords: SpoilageRecord[]; // 已灌装报损记录
-  sourceLogId?: string;            // 关联的制作记录ID
-  sourceTaskId?: string;           // 关联的制作任务ID
-}
-
-export interface BottlingRecord {
-  id: string;
-  date: number;                    // 灌装日期
-  specId: string;                  // 包装规格ID
-  specName: string;                // 包装规格名称
-  specVolume: number;              // 规格容量（ml）
-  count: number;                   // 瓶数
-  totalAmount: number;             // 总灌装量（ml）
-  wastageAmount: number;           // 灌装损耗量（ml）
-}
-
-export interface SpoilageRecord {
-  id: string;
-  date: number;                    // 报损日期
-  amount: number;                  // 报损量（ml）
-  reason: string;                  // 原因：变质/打碎/其他
-  remark: string;                  // 备注
-}
-
-// ========== 要货单 ==========
-export interface Order {
-  id: string;
-  createdAt: number;
-  customerName: string;            // 客户名称
-  items: OrderItem[];              // 要货明细
-  status: 'pending' | 'partial' | 'completed';  // 待交付/部分交付/已完成
-  deliveredItems: DeliveredItem[]; // 已交付记录
-  relatedTaskIds: string[];        // 关联的制作任务ID列表
-  remark: string;                  // 备注
-}
-
-export interface OrderItem {
-  id: string;
-  productId: string;
-  productName: string;
-  specId: string;                  // 包装规格ID（散量为 'loose'）
-  specName: string;                // 规格名称
-  specVolume: number;              // 单瓶容量（ml），散量为0
-  quantity: number;                // 数量（瓶数或散量ml数）
-  totalVolume: number;             // 总量（ml）
-  deliveredQuantity: number;       // 已交付数量
-}
-
-export interface DeliveredItem {
-  id: string;
-  date: number;
-  productId: string;
-  productName: string;
-  quantity: number;
-  unit: string;                    // '瓶' 或 'ml'
-  batchAllocations: BatchAllocation[];
-}
-
-export interface BatchAllocation {
-  batchId: string;
-  amount: number;                  // 从该批次取出的量（ml）
-}
-
-// ========== 制作任务 ==========
-export type TaskStatus = 'not_started' | 'in_progress' | 'completed';
-export type ProductTaskStatus = 'prep' | 'producing' | 'bottling' | 'done' | 'cancelled';
-
-export interface ProductionTask {
-  id: string;
-  createdAt: number;
-  remark: string;                  // 备注（如：张三要货单）
-  status: TaskStatus;
-  sourceOrderId?: string;          // 来源要货单ID
-  items: ProductionTaskItem[];
-}
-
-export interface ProductionTaskItem {
-  id: string;
-  productId: string;
-  productName: string;
-  plannedAmount: number;           // 计划产量（ml）
-  plannedSpecs: PlannedSpec[];     // 计划规格
-  productStatus: ProductTaskStatus;
-  ingredientChecklist: IngredientChecklistItem[];  // 原料筹备清单
-  prepCompleted: boolean;          // 原料筹备是否完成
-  sourceBatchIds: string[];        // 关联的成功批次ID
-  failureRecords: FailureRecord[]; // 失败记录
-  bottlingRecordIds: string[];     // 关联的灌装记录ID（存在Batch的bottlingRecords中）
-}
-
-export interface PlannedSpec {
-  specId: string;
-  specName: string;
-  specVolume: number;
-  count: number;                   // 瓶数
-}
-
-export interface IngredientChecklistItem {
-  ingredientId: string;
-  ingredientName: string;
-  requiredAmount: number;          // 需要量
-  unit: string;
-  checked: boolean;                // 是否已备齐
-}
-
-export interface FailureRecord {
-  id: string;
-  date: number;
-  maker: string;
-  remark: string;
-  spoiledIngredients: Array<{
-    ingredientId: string;
-    ingredientName: string;
-    amount: number;
-    unit: string;
-    cost: number;
-  }>;
-  totalCost: number;
-}
-
 // 默认全局配置
 export const DEFAULT_CONFIG: GlobalConfig = {
   password: '123456', // 默认密码
@@ -351,4 +257,5 @@ export const DEFAULT_CONFIG: GlobalConfig = {
     { id: 'iunit-3', name: '毫升(ml)', value: 'ml', enabled: true },
     { id: 'iunit-4', name: '升(L)', value: 'L', enabled: true },
   ],
+  operationPlanTemplates: [],
 };

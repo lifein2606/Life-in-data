@@ -16,7 +16,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { ChevronLeft, Edit2, Plus, Minus, Lock, ClipboardList } from 'lucide-react';
-import { PackageStock, ProductionStep } from '@/types';
+import { PackageStock, ProductionStep, OperationPlanInstance } from '@/types';
 import { costCalculator } from '@/lib/storage';
 
 export default function ProductDetailPage() {
@@ -164,6 +164,75 @@ export default function ProductDetailPage() {
 
   // 获取原料产品包装规格（原料产品只显示散量）
   const isIngredientProduct = product?.isIngredientProduct;
+
+  // 渲染操作方案字段值
+  const renderOperationPlanFieldValue = (plan: OperationPlanInstance) => {
+    const template = (config.operationPlanTemplates || []).find((t) => t.id === plan.templateId);
+    if (!template) return null;
+    
+    return template.fields.map((field) => {
+      const value = plan.fieldValues[field.id];
+      let displayValue = '';
+      
+      switch (field.type) {
+        case 'duration': {
+          const dv = value as { value: number; unit: string } | undefined;
+          if (dv && dv.value > 0) {
+            displayValue = `${dv.value % 1 === 0 ? dv.value : dv.value.toFixed(2)} ${dv.unit || field.unit || '分钟'}`;
+          } else {
+            displayValue = '-';
+          }
+          break;
+        }
+        case 'temperature': {
+          const tv = value as { value: number; unit: string } | undefined;
+          if (tv && tv.value > 0) {
+            displayValue = `${tv.value % 1 === 0 ? tv.value : tv.value.toFixed(2)}${tv.unit || field.unit || '°C'}`;
+          } else {
+            displayValue = '-';
+          }
+          break;
+        }
+        case 'ingredient': {
+          const iv = value as string[] | undefined;
+          if (iv && iv.length > 0) {
+            const names = iv.map((id) => {
+              const ing = (ingredients || []).find((i) => i.id === id);
+              return ing?.name || id;
+            });
+            displayValue = names.join('、');
+          } else {
+            displayValue = '-';
+          }
+          break;
+        }
+        case 'text': {
+          displayValue = value as string || '-';
+          break;
+        }
+        case 'select': {
+          displayValue = (value as string) || '-';
+          break;
+        }
+        case 'multiselect': {
+          const mv = value as string[] | undefined;
+          if (mv && mv.length > 0) {
+            displayValue = mv.join('、');
+          } else {
+            displayValue = '-';
+          }
+          break;
+        }
+      }
+      
+      return (
+        <div key={field.id} className="flex items-start justify-between py-2">
+          <span className="text-sm text-[var(--muted-foreground)] shrink-0 mr-2">{field.name}</span>
+          <span className="text-sm text-right">{displayValue}</span>
+        </div>
+      );
+    });
+  };
 
   // 按步骤分组显示（用于详情页）
   const renderStepsView = () => {
@@ -641,6 +710,29 @@ export default function ProductDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* 具体操作方案 - 原料产品且有操作方案数据时显示 */}
+          {isIngredientProduct && product.operationPlans && product.operationPlans.length > 0 && (
+            <Card className="glass-card">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">具体操作方案</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {product.operationPlans.map((plan) => (
+                  <div key={plan.templateId} className="p-3 rounded-lg bg-[var(--muted)]">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge className="bg-[var(--primary)] text-[var(--primary-foreground)] text-xs">
+                        {plan.templateName}
+                      </Badge>
+                    </div>
+                    <div className="space-y-0">
+                      {renderOperationPlanFieldValue(plan)}
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </TooltipProvider>

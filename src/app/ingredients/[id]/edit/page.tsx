@@ -327,7 +327,7 @@ export default function IngredientEditPage() {
                   placeholder="0.00"
                 />
                 <div className="flex items-center px-3 bg-[var(--input)] rounded-md border border-[var(--border)] min-w-[80px] justify-center">
-                  <span className="text-sm text-[var(--muted-foreground)]">元/{formData.purchaseSpec ? formData.minUnit : '-'}</span>
+                  <span className="text-sm text-[var(--muted-foreground)]">元/进货单位</span>
                 </div>
               </div>
             </div>
