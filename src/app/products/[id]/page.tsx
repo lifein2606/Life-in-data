@@ -277,18 +277,18 @@ export default function ProductDetailPage() {
                     <div className="flex items-center gap-2 mt-1">
                       {step.lockStandard && step.fixedInput && (
                         <span className="text-xs text-[var(--muted-foreground)]">
-                          固定: {step.fixedInput}{si.inputUnit}→{step.fixedOutput}g
+                          固定: {step.fixedInput}{si.unit || si.inputUnit}→{step.fixedOutput}{si.unit || si.inputUnit}
                         </span>
                       )}
                     </div>
                   </div>
                   <div className="text-right">
                     <span className="number-font text-sm">
-                      {si.inputAmount}{si.inputUnit}
+                      {si.inputAmount}{si.unit || si.inputUnit}
                     </span>
                     {step.resultWeight !== undefined && si.inputAmount > 0 && (
                       <div className="text-xs text-[var(--muted-foreground)] mt-1">
-                        → {step.resultWeight}g
+                        → {step.resultWeight}{si.unit || si.inputUnit}
                       </div>
                     )}
                   </div>
@@ -347,18 +347,18 @@ export default function ProductDetailPage() {
                     <div className="flex items-center gap-2 mt-1">
                       {pi.lockStandard && pi.fixedInput && (
                         <span className="text-xs text-[var(--muted-foreground)]">
-                          固定: {pi.fixedInput}{pi.inputUnit}→{pi.fixedOutput}g
+                          固定: {pi.fixedInput}{pi.unit || pi.inputUnit}→{pi.fixedOutput}{pi.unit || pi.inputUnit}
                         </span>
                       )}
                     </div>
                   </div>
                   <div className="text-right">
                     <span className="number-font text-sm">
-                      {pi.inputAmount}{pi.inputUnit}
+                      {pi.inputAmount}{pi.unit || pi.inputUnit}
                     </span>
                     {pi.resultWeight !== undefined && (
                       <div className="text-xs text-[var(--muted-foreground)] mt-1">
-                        → {pi.resultWeight}g
+                        → {pi.resultWeight}{pi.unit || pi.inputUnit}
                       </div>
                     )}
                   </div>
@@ -475,7 +475,7 @@ export default function ProductDetailPage() {
               <div className="flex items-center gap-4">
                 <span className="text-sm">出品标准</span>
                 <span className="number-font text-[var(--primary)] font-medium">
-                  {product.standardOutput}ml
+                  {product.standardOutput}{product.standardOutputUnit || 'ml'}
                 </span>
               </div>
               {/* 显示 ABV */}
@@ -511,7 +511,7 @@ export default function ProductDetailPage() {
                   }}
                   className="bg-[var(--input)] number-font w-[120px]"
                 />
-                <span className="text-sm">ml</span>
+                <span className="text-sm">{product.standardOutputUnit || 'ml'}</span>
               </div>
 
               {scaledIngredients.length > 0 && (

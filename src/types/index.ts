@@ -97,6 +97,7 @@ export interface Ingredient {
   purchaseUnit: string; // 进货单位
   minUnitPrice: number; // 最小单位单价（自动计算）
   minUnit: string; // 最小单位
+  unit?: 'ml' | 'g' | 'L' | 'kg'; // 显示单位，由关联原料产品的standardOutputUnit决定
   source: string; // 来源
   abv: number; // 酒精度（%），新增字段
   relatedProductId?: string; // 如果是内部生产，关联的产品ID
@@ -111,6 +112,7 @@ export interface Product {
   category: string; // 分类ID
   brands: string[]; // 售卖品牌ID列表
   standardOutput: number; // 出品总量标准
+  standardOutputUnit?: 'ml' | 'g' | 'L' | 'kg'; // 出品总量单位，默认ml（兼容旧数据）
   ingredients: ProductIngredient[]; // 原料明细（向后兼容）
   steps: ProductionStep[]; // 操作步骤分组（新增）
   packageSpecs: string[]; // 包装方案ID列表
@@ -132,6 +134,7 @@ export interface StepIngredient {
   ingredientName: string;
   inputAmount: number;
   inputUnit: string;
+  unit?: 'ml' | 'g' | 'L' | 'kg'; // 显示单位，默认跟随inputUnit（兼容旧数据）
 }
 
 // 操作步骤（分组结构）
@@ -153,6 +156,7 @@ export interface ProductIngredient {
   ingredientName: string; // 原料名（冗余，便于显示）
   inputAmount: number; // 投入量
   inputUnit: string; // 投入单位
+  unit?: 'ml' | 'g' | 'L' | 'kg'; // 显示单位，默认跟随inputUnit（兼容旧数据）
   method: string; // 操作方式ID
   methodName: string; // 操作方式名称（冗余）
   resultWeight?: number; // 结果液重- 有损耗时必填

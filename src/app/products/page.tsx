@@ -172,7 +172,7 @@ export default function ProductsPage() {
               </div>
               {product.standardOutput && (
                 <div className="mt-1 text-xs text-[var(--muted-foreground)]">
-                  出品量：{product.standardOutput}ml
+                  出品量：{product.standardOutput}{product.standardOutputUnit || 'ml'}
                 </div>
               )}
               {product.abv > 0 && (
@@ -273,7 +273,7 @@ export default function ProductsPage() {
             )}
             {product.standardOutput > 0 && (
               <div className="text-[10px] text-[var(--muted-foreground)]">
-                出品：{product.standardOutput}ml
+                出品：{product.standardOutput}{product.standardOutputUnit || 'ml'}
               </div>
             )}
             {product.abv > 0 && (

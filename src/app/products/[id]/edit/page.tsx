@@ -49,6 +49,7 @@ export default function ProductEditPage() {
     category: '',
     brands: [] as string[],
     standardOutput: 500,
+    standardOutputUnit: 'ml' as 'ml' | 'g' | 'L' | 'kg',
     ingredients: [] as ProductIngredient[],  // 保留用于兼容
     steps: [] as ProductionStep[],           // 新的步骤分组结构
     packageSpecs: [] as string[],
@@ -70,6 +71,7 @@ export default function ProductEditPage() {
           category: product.category,
           brands: product.brands,
           standardOutput: product.standardOutput,
+          standardOutputUnit: product.standardOutputUnit || 'ml',
           ingredients: product.ingredients || [],
           steps: product.steps || [],
           packageSpecs: product.packageSpecs || [],
@@ -94,6 +96,7 @@ export default function ProductEditPage() {
         category: product.category,
         brands: product.brands,
         standardOutput: product.standardOutput,
+        standardOutputUnit: product.standardOutputUnit || 'ml',
         ingredients: product.ingredients || [],
         steps: product.steps || [],
         packageSpecs: product.packageSpecs || [],
@@ -157,6 +160,44 @@ export default function ProductEditPage() {
   // 启用的制作方法
   const enabledMethods = config.methods.filter((m) => m.enabled);
 
+  // 获取同类单位选项（容量组：ml/L，重量组：g/kg）
+  const getUnitOptions = (currentUnit: string): { value: string; label: string }[] => {
+    if (currentUnit === 'ml' || currentUnit === 'L') {
+      return [
+        { value: 'ml', label: 'ml（毫升）' },
+        { value: 'L', label: 'L（升）' },
+      ];
+    }
+    if (currentUnit === 'g' || currentUnit === 'kg') {
+      return [
+        { value: 'g', label: 'g（克）' },
+        { value: 'kg', label: 'kg（千克）' },
+      ];
+    }
+    // 默认返回容量组
+    return [
+      { value: 'ml', label: 'ml（毫升）' },
+      { value: 'L', label: 'L（升）' },
+    ];
+  };
+
+  // 获取原料的默认单位（基于关联原料产品的standardOutputUnit）
+  const getIngredientDefaultUnit = (ingredientId: string): 'ml' | 'g' | 'L' | 'kg' => {
+    const ing = (ingredients || []).find(i => i.id === ingredientId);
+    if (ing?.relatedProductId) {
+      const relatedProduct = products.find(p => p.id === ing.relatedProductId);
+      if (relatedProduct?.standardOutputUnit) {
+        return relatedProduct.standardOutputUnit;
+      }
+    }
+    // 兜底：使用原料的minUnit，如果不属于四种单位则默认ml
+    const minUnit = ing?.minUnit || 'g';
+    if (['ml', 'g', 'L', 'kg'].includes(minUnit)) {
+      return minUnit as 'ml' | 'g' | 'L' | 'kg';
+    }
+    return 'ml';
+  };
+
   // ========== 步骤相关操作 ==========
 
   // 添加步骤
@@ -197,7 +238,8 @@ export default function ProductEditPage() {
       ingredientId: '',
       ingredientName: '',
       inputAmount: 0,
-      inputUnit: 'g',
+      inputUnit: 'ml',
+      unit: 'ml',
     };
     const newSteps = formData.steps.map((step) =>
       step.id === stepId
@@ -247,7 +289,8 @@ export default function ProductEditPage() {
       ingredientId: '',
       ingredientName: '',
       inputAmount: 0,
-      inputUnit: 'g',
+      inputUnit: 'ml',
+      unit: 'ml',
       method: '',
       methodName: '',
       lockStandard: false,
@@ -503,6 +546,7 @@ export default function ProductEditPage() {
         category: formData.category,
         brands: formData.brands,
         standardOutput: formData.standardOutput,
+        standardOutputUnit: formData.standardOutputUnit,
         steps: formData.steps,
         ingredients: formData.ingredients,
         packageSpecs: formData.packageSpecs,
@@ -631,7 +675,20 @@ export default function ProductEditPage() {
                   }}
                   className="bg-[var(--input)] number-font w-[100px]"
                 />
-                <span className="text-sm">ml</span>
+                <Select
+                  value={formData.standardOutputUnit}
+                  onValueChange={(v) => setFormData({ ...formData, standardOutputUnit: v as 'ml' | 'g' | 'L' | 'kg' })}
+                >
+                  <SelectTrigger className="bg-[var(--input)] h-9 w-[70px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ml">ml</SelectItem>
+                    <SelectItem value="g">g</SelectItem>
+                    <SelectItem value="L">L</SelectItem>
+                    <SelectItem value="kg">kg</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -781,10 +838,12 @@ export default function ProductEditPage() {
                                   value={si.ingredientId}
                                   onChange={(v) => {
                                     const ing = (ingredients || []).find((i) => i.id === v);
+                                    const defaultUnit = getIngredientDefaultUnit(v);
                                     updateStepIngredient(step.id, si.id, {
                                       ingredientId: v,
                                       ingredientName: ing?.name || '',
-                                      inputUnit: ing?.minUnit || 'g',
+                                      inputUnit: defaultUnit,
+                                      unit: defaultUnit,
                                     });
                                   }}
                                   placeholder="选择原料"
@@ -802,9 +861,20 @@ export default function ProductEditPage() {
                                     setNumVal(`si-${si.id}`, val);
                                     updateStepIngredient(step.id, si.id, { inputAmount: parseFloat(val) || 0 });
                                   }}
-                                  className="bg-[var(--input)] number-font h-8 text-sm w-[90px]"
+                                  className="bg-[var(--input)] number-font h-8 text-sm w-[70px]"
                                 />
-                                <span className="text-xs">{si.inputUnit}</span>
+                                <select
+                                  value={si.unit || si.inputUnit || 'ml'}
+                                  onChange={(e) => {
+                                    const newUnit = e.target.value as 'ml' | 'g' | 'L' | 'kg';
+                                    updateStepIngredient(step.id, si.id, { unit: newUnit, inputUnit: newUnit });
+                                  }}
+                                  className="text-xs bg-[var(--input)] border border-[var(--border)] rounded px-1 h-8"
+                                >
+                                  {getUnitOptions(si.unit || si.inputUnit || 'ml').map(opt => (
+                                    <option key={opt.value} value={opt.value}>{opt.value}</option>
+                                  ))}
+                                </select>
                               </div>
                               <Button
                                 variant="ghost"

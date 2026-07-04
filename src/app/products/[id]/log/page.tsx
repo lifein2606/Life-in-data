@@ -230,7 +230,7 @@ export default function ProductionLogPage() {
             <CardTitle className="text-base">{product.name}</CardTitle>
             <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
               <Badge variant="outline">{getCategoryName(product.category)}</Badge>
-              <span>标准出品: {product.standardOutput}ml</span>
+              <span>标准出品: {product.standardOutput}{product.standardOutputUnit || 'ml'}</span>
             </div>
           </CardHeader>
         </Card>
@@ -252,9 +252,9 @@ export default function ProductionLogPage() {
                   setTargetOutput(parseFloat(val) || 0);
                 }}
                 className="bg-[var(--input)] number-font flex-1 h-9"
-                placeholder="输入出品量(ml)"
+                placeholder={`输入出品量(${product.standardOutputUnit || 'ml'})`}
               />
-              <span className="text-sm text-[var(--muted-foreground)]">ml</span>
+              <span className="text-sm text-[var(--muted-foreground)]">{product.standardOutputUnit || 'ml'}</span>
             </div>
           </CardContent>
         </Card>
@@ -291,7 +291,7 @@ export default function ProductionLogPage() {
                           className="bg-[var(--input)] number-font flex-1 h-8 text-sm"
                           placeholder="实际投入"
                         />
-                        <span className="text-xs text-[var(--muted-foreground)]">{si.inputUnit}</span>
+                        <span className="text-xs text-[var(--muted-foreground)]">{si.unit || si.inputUnit}</span>
                       </div>
                     );
                   })}
@@ -319,7 +319,7 @@ export default function ProductionLogPage() {
                       className="bg-[var(--input)] number-font flex-1 h-8 text-sm"
                       placeholder="实际投入"
                     />
-                    <span className="text-xs text-[var(--muted-foreground)]">{pi.inputUnit}</span>
+                    <span className="text-xs text-[var(--muted-foreground)]">{pi.unit || pi.inputUnit}</span>
                   </div>
                 );
               })
@@ -387,7 +387,7 @@ export default function ProductionLogPage() {
                 className="bg-[var(--input)] number-font flex-1 h-9"
                 placeholder="实际成品出品量"
               />
-              <span className="text-sm text-[var(--muted-foreground)]">ml</span>
+              <span className="text-sm text-[var(--muted-foreground)]">{product.standardOutputUnit || 'ml'}</span>
             </div>
           </CardContent>
         </Card>
