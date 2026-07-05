@@ -21,11 +21,77 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Plus, Search, Settings, ChevronRight, Edit2, Lock, Home, Trash2, List, LayoutGrid, ClipboardList } from 'lucide-react';
+import { Plus, Search, Settings, ChevronRight, Edit2, Lock, Home, Trash2, List, LayoutGrid, ClipboardList, GripVertical, ArrowUpDown, Check, X } from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+// 可排序的产品卡片包装组件
+function SortableListCard({ product, renderCard }: { product: any; renderCard: (product: any) => React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: product.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : 'auto' as const,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="relative">
+      {renderCard(product)}
+      <div
+        {...attributes}
+        {...listeners}
+        className="absolute left-0 top-1/2 -translate-y-1/2 p-1 cursor-grab active:cursor-grabbing text-[var(--muted-foreground)] hover:text-[var(--foreground)] touch-none"
+      >
+        <GripVertical className="h-5 w-5" />
+      </div>
+    </div>
+  );
+}
+
+function SortableGridCard({ product, renderCard }: { product: any; renderCard: (product: any) => React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: product.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : 'auto' as const,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="relative">
+      {renderCard(product)}
+      <div
+        {...attributes}
+        {...listeners}
+        className="absolute top-1 left-1 p-1 cursor-grab active:cursor-grabbing text-[var(--muted-foreground)] hover:text-[var(--foreground)] touch-none"
+      >
+        <GripVertical className="h-4 w-4" />
+      </div>
+    </div>
+  );
+}
 
 export default function ProductsPage() {
   const router = useRouter();
-  const { products, deleteProduct, refreshData } = useProducts();
+  const { products, deleteProduct, refreshData, updateSortOrders } = useProducts();
   const { config, stocks } = useApp();
   const { mode, exitMode } = useMode();
 
@@ -34,6 +100,10 @@ export default function ProductsPage() {
   
   // 视图模式状态（默认列表模式）
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+
+  // 排序管理模式
+  const [sortMode, setSortMode] = useState(false);
+  const [sortProducts, setSortProducts] = useState<any[]>([]);
 
   // 每次页面挂载或获得焦点时刷新数据，确保编辑后列表同步
   useEffect(() => {
@@ -69,6 +139,29 @@ export default function ProductsPage() {
     router.push('/');
   };
 
+  // 进入排序模式
+  const enterSortMode = () => {
+    setSortProducts([...filteredProducts]);
+    setSortMode(true);
+  };
+
+  // 退出排序模式
+  const exitSortMode = () => {
+    setSortMode(false);
+    setSortProducts([]);
+  };
+
+  // 保存排序
+  const saveSortOrder = async () => {
+    const orders: Record<string, number> = {};
+    sortProducts.forEach((p, index) => {
+      orders[p.id] = index;
+    });
+    await updateSortOrders(orders);
+    setSortMode(false);
+    setSortProducts([]);
+  };
+
   // 过滤产品
   const filteredProducts = useMemo(() => {
     return (products || []).filter((product) => {
@@ -80,6 +173,30 @@ export default function ProductsPage() {
       return matchSearch && matchCategory && matchBrand && matchIngredient;
     });
   }, [products, search, categoryFilter, brandFilter, showIngredientProducts]);
+
+  // DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // 处理拖拽结束
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setSortProducts((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id);
+        const newIndex = items.findIndex((item) => item.id === over.id);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+  };
 
   // 获取分类名称
   const getCategoryName = (categoryId: string) => {
@@ -154,7 +271,7 @@ export default function ProductsPage() {
           <div className="flex items-center justify-between">
             <div
               className="flex-1 min-w-0 cursor-pointer"
-              onClick={() => handleView(product.id)}
+              onClick={() => !sortMode && handleView(product.id)}
             >
               <div className="flex items-center gap-2 mb-1">
                 <h3 className="font-medium truncate">{product.name}</h3>
@@ -191,44 +308,46 @@ export default function ProductsPage() {
             </div>
             <div className="flex items-center gap-1">
               {/* 查看日志按钮 - 查阅和编辑模式都可用 */}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-[var(--muted-foreground)] hover:text-[var(--primary)]"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  router.push(`/products/${product.id}/log`);
-                }}
-              >
-                <ClipboardList className="h-4 w-4" />
-              </Button>
-              {isEditMode && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-[var(--muted-foreground)] hover:text-[var(--destructive)]"
-                  onClick={(e) => handleDelete(product.id, e)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              )}
-              {isEditMode ? (
+              {!sortMode && (
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8 text-[var(--muted-foreground)] hover:text-[var(--primary)]"
-                  onClick={(e) => handleEdit(product.id, e)}
+                  onClick={(e: React.MouseEvent) => {
+                    e.stopPropagation();
+                    router.push(`/products/${product.id}/log`);
+                  }}
+                >
+                  <ClipboardList className="h-4 w-4" />
+                </Button>
+              )}
+              {isEditMode && !sortMode && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-[var(--muted-foreground)] hover:text-[var(--destructive)]"
+                  onClick={(e: React.MouseEvent) => handleDelete(product.id, e)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
+              {isEditMode && !sortMode ? (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-[var(--muted-foreground)] hover:text-[var(--primary)]"
+                  onClick={(e: React.MouseEvent) => handleEdit(product.id, e)}
                 >
                   <Edit2 className="h-4 w-4" />
                 </Button>
-              ) : (
+              ) : !sortMode ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 opacity-50"
-                      onClick={(e) => handleEdit(product.id, e)}
+                      onClick={(e: React.MouseEvent) => handleEdit(product.id, e)}
                     >
                       <Lock className="h-4 w-4" />
                     </Button>
@@ -237,8 +356,8 @@ export default function ProductsPage() {
                     <p>需要进入编辑模式才能操作</p>
                   </TooltipContent>
                 </Tooltip>
-              )}
-              <ChevronRight className="h-5 w-5 text-[var(--muted-foreground)]" />
+              ) : null}
+              {!sortMode && <ChevronRight className="h-5 w-5 text-[var(--muted-foreground)]" />}
             </div>
           </div>
         </CardContent>
@@ -252,8 +371,8 @@ export default function ProductsPage() {
     return (
       <Card
         key={product.id}
-        className="glass-card group cursor-pointer overflow-hidden"
-        onClick={() => handleView(product.id)}
+        className="glass-card group overflow-hidden"
+        onClick={() => !sortMode && handleView(product.id)}
       >
         <CardContent className="p-3">
           <div className="flex items-center gap-2 mb-2">
@@ -287,41 +406,46 @@ export default function ProductsPage() {
               </div>
             )}
           </div>
-          <div className="flex items-center justify-end gap-1 mt-2 pt-2 border-t border-[var(--border)]" onClick={(e) => e.stopPropagation()}>
-            {/* 查看日志按钮 - 查阅和编辑模式都可用 */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-[var(--muted-foreground)] hover:text-[var(--primary)]"
-              onClick={() => router.push(`/products/${product.id}/log`)}
-            >
-              <ClipboardList className="h-3.5 w-3.5" />
-            </Button>
-            {isEditMode && (
-              <>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-[var(--muted-foreground)] hover:text-[var(--primary)]"
-                  onClick={() => router.push(`/products/${product.id}/edit`)}
-                >
-                  <Edit2 className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-[var(--muted-foreground)] hover:text-[var(--destructive)]"
-                  onClick={(e) => handleDelete(product.id, e)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </>
-            )}
-          </div>
+          {!sortMode && (
+            <div className="flex items-center justify-end gap-1 mt-2 pt-2 border-t border-[var(--border)]" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+              {/* 查看日志按钮 - 查阅和编辑模式都可用 */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-[var(--muted-foreground)] hover:text-[var(--primary)]"
+                onClick={() => router.push(`/products/${product.id}/log`)}
+              >
+                <ClipboardList className="h-3.5 w-3.5" />
+              </Button>
+              {isEditMode && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-[var(--muted-foreground)] hover:text-[var(--primary)]"
+                    onClick={() => router.push(`/products/${product.id}/edit`)}
+                  >
+                    <Edit2 className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-[var(--muted-foreground)] hover:text-[var(--destructive)]"
+                    onClick={(e: React.MouseEvent) => handleDelete(product.id, e)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
     );
   };
+
+  // 当前显示的产品列表（排序模式使用 sortProducts，否则使用 filteredProducts）
+  const displayProducts = sortMode ? sortProducts : filteredProducts;
 
   return (
     <TooltipProvider>
@@ -338,10 +462,51 @@ export default function ProductsPage() {
             <span className="text-sm">首页</span>
           </Button>
 
-          <h1 className="text-lg font-semibold absolute left-1/2 -translate-x-1/2">产品库</h1>
+          <h1 className="text-lg font-semibold absolute left-1/2 -translate-x-1/2">
+            {sortMode ? '管理排序' : '产品库'}
+          </h1>
 
           <div className="flex items-center gap-2">
-            {isEditMode ? (
+            {/* 排序模式按钮 - 仅编辑模式可用 */}
+            {isEditMode && !sortMode && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={enterSortMode}
+                    className="h-10 w-10"
+                  >
+                    <ArrowUpDown className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>管理排序</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+            {/* 排序模式下的保存/取消按钮 */}
+            {sortMode && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={saveSortOrder}
+                  className="h-10 w-10"
+                >
+                  <Check className="h-5 w-5 text-[var(--primary)]" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={exitSortMode}
+                  className="h-10 w-10"
+                >
+                  <X className="h-5 w-5 text-[var(--destructive)]" />
+                </Button>
+              </>
+            )}
+            {!sortMode && isEditMode ? (
               <Button
                 variant="ghost"
                 size="icon"
@@ -350,7 +515,7 @@ export default function ProductsPage() {
               >
                 <Settings className="h-5 w-5" />
               </Button>
-            ) : (
+            ) : !sortMode ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -366,8 +531,8 @@ export default function ProductsPage() {
                   <p>需要进入编辑模式才能操作</p>
                 </TooltipContent>
               </Tooltip>
-            )}
-            {isEditMode ? (
+            ) : null}
+            {!sortMode && isEditMode ? (
               <Button
                 variant="ghost"
                 size="icon"
@@ -376,7 +541,7 @@ export default function ProductsPage() {
               >
                 <Plus className="h-5 w-5" />
               </Button>
-            ) : (
+            ) : !sortMode ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -392,96 +557,128 @@ export default function ProductsPage() {
                   <p>需要进入编辑模式才能操作</p>
                 </TooltipContent>
               </Tooltip>
-            )}
+            ) : null}
           </div>
         </div>
 
-        {/* 搜索和筛选 */}
-        <div className="px-4 pt-4 pb-3 space-y-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--muted-foreground)]" />
-            <Input
-              placeholder="搜索产品..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 bg-[var(--input)]"
-            />
+        {/* 排序模式提示 */}
+        {sortMode && (
+          <div className="px-4 py-2 text-xs text-[var(--muted-foreground)] bg-[var(--muted)]">
+            拖拽产品卡片调整顺序，完成后点击 ✓ 保存
           </div>
-          <div className="flex gap-2 items-center">
-            <Combobox
-              options={[
-                { value: 'all', label: '全部分类' },
-                ...enabledCategories.filter((cat) => cat.id).map((cat) => ({
-                  value: cat.id,
-                  label: cat.name,
-                })),
-              ]}
-              value={categoryFilter}
-              onChange={setCategoryFilter}
-              placeholder="分类"
-              searchPlaceholder="搜索分类..."
-              className="w-[140px] bg-[var(--input)]"
-            />
-            <Combobox
-              options={[
-                { value: 'all', label: '全部品牌' },
-                ...enabledBrands.filter((brand) => brand.id).map((brand) => ({
-                  value: brand.id,
-                  label: brand.name,
-                })),
-              ]}
-              value={brandFilter}
-              onChange={setBrandFilter}
-              placeholder="品牌"
-              searchPlaceholder="搜索品牌..."
-              className="w-[140px] bg-[var(--input)]"
-            />
-            {/* 显示原料产品勾选 */}
-            <label className="flex items-center gap-1.5 cursor-pointer select-none whitespace-nowrap text-xs text-[var(--muted-foreground)] ml-auto">
-              <input
-                type="checkbox"
-                checked={showIngredientProducts}
-                onChange={(e) => setShowIngredientProducts(e.target.checked)}
-                className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]"
+        )}
+
+        {/* 搜索和筛选 - 非排序模式 */}
+        {!sortMode && (
+          <div className="px-4 pt-4 pb-3 space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--muted-foreground)]" />
+              <Input
+                placeholder="搜索产品..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 bg-[var(--input)]"
               />
-              原料
-            </label>
-            {/* 视图切换按钮 */}
-            <div className="flex items-center border border-[var(--border)] rounded-md overflow-hidden">
-              <button
-                type="button"
-                onClick={() => handleViewModeChange('list')}
-                className={`p-1.5 ${viewMode === 'list' ? 'bg-[var(--primary)] text-[var(--primary-foreground)]' : 'bg-transparent text-[var(--muted-foreground)] hover:bg-[var(--accent)]'}`}
-                title="列表视图"
-              >
-                <List className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => handleViewModeChange('grid')}
-                className={`p-1.5 ${viewMode === 'grid' ? 'bg-[var(--primary)] text-[var(--primary-foreground)]' : 'bg-transparent text-[var(--muted-foreground)] hover:bg-[var(--accent)]'}`}
-                title="网格视图"
-              >
-                <LayoutGrid className="h-4 w-4" />
-              </button>
+            </div>
+            <div className="flex gap-2 items-center">
+              <Combobox
+                options={[
+                  { value: 'all', label: '全部分类' },
+                  ...enabledCategories.filter((cat) => cat.id).map((cat) => ({
+                    value: cat.id,
+                    label: cat.name,
+                  })),
+                ]}
+                value={categoryFilter}
+                onChange={setCategoryFilter}
+                placeholder="分类"
+                searchPlaceholder="搜索分类..."
+                className="w-[140px] bg-[var(--input)]"
+              />
+              <Combobox
+                options={[
+                  { value: 'all', label: '全部品牌' },
+                  ...enabledBrands.filter((brand) => brand.id).map((brand) => ({
+                    value: brand.id,
+                    label: brand.name,
+                  })),
+                ]}
+                value={brandFilter}
+                onChange={setBrandFilter}
+                placeholder="品牌"
+                searchPlaceholder="搜索品牌..."
+                className="w-[140px] bg-[var(--input)]"
+              />
+              {/* 显示原料产品勾选 */}
+              <label className="flex items-center gap-1.5 cursor-pointer select-none whitespace-nowrap text-xs text-[var(--muted-foreground)] ml-auto">
+                <input
+                  type="checkbox"
+                  checked={showIngredientProducts}
+                  onChange={(e) => setShowIngredientProducts(e.target.checked)}
+                  className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]"
+                />
+                原料
+              </label>
+              {/* 视图切换按钮 */}
+              <div className="flex items-center border border-[var(--border)] rounded-md overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => handleViewModeChange('list')}
+                  className={`p-1.5 ${viewMode === 'list' ? 'bg-[var(--primary)] text-[var(--primary-foreground)]' : 'bg-transparent text-[var(--muted-foreground)] hover:bg-[var(--accent)]'}`}
+                  title="列表视图"
+                >
+                  <List className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleViewModeChange('grid')}
+                  className={`p-1.5 ${viewMode === 'grid' ? 'bg-[var(--primary)] text-[var(--primary-foreground)]' : 'bg-transparent text-[var(--muted-foreground)] hover:bg-[var(--accent)]'}`}
+                  title="网格视图"
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* 产品列表/网格 */}
-        <div className={viewMode === 'grid' ? 'px-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3' : 'px-4 space-y-3'}>
-          {filteredProducts.length === 0 ? (
-            <div className={viewMode === 'grid' ? 'col-span-full text-center py-12 text-[var(--muted-foreground)]' : 'text-center py-12 text-[var(--muted-foreground)]'}>
-              {search || categoryFilter !== 'all' || brandFilter !== 'all' || !showIngredientProducts
-                ? '未找到匹配的产品'
-                : '暂无产品，点击右上角 + 添加'}
-            </div>
-          ) : (
-            filteredProducts.map((product) =>
-              viewMode === 'grid' ? renderGridCard(product) : renderListCard(product)
-            )
-          )}
-        </div>
+        {sortMode ? (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={sortProducts.map((p) => p.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className={viewMode === 'grid' ? 'px-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3' : 'px-4 space-y-3'}>
+                {sortProducts.map((product) =>
+                  viewMode === 'grid' ? (
+                    <SortableGridCard key={product.id} product={product} renderCard={renderGridCard} />
+                  ) : (
+                    <SortableListCard key={product.id} product={product} renderCard={renderListCard} />
+                  )
+                )}
+              </div>
+            </SortableContext>
+          </DndContext>
+        ) : (
+          <div className={viewMode === 'grid' ? 'px-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3' : 'px-4 space-y-3'}>
+            {filteredProducts.length === 0 ? (
+              <div className={viewMode === 'grid' ? 'col-span-full text-center py-12 text-[var(--muted-foreground)]' : 'text-center py-12 text-[var(--muted-foreground)]'}>
+                {search || categoryFilter !== 'all' || brandFilter !== 'all' || !showIngredientProducts
+                  ? '未找到匹配的产品'
+                  : '暂无产品，点击右上角 + 添加'}
+              </div>
+            ) : (
+              filteredProducts.map((product) =>
+                viewMode === 'grid' ? renderGridCard(product) : renderListCard(product)
+              )
+            )}
+          </div>
+        )}
       </div>
     </TooltipProvider>
   );
