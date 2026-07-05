@@ -120,6 +120,27 @@ export const ingredientABVStorage = {
   },
 };
 
+// 产品排序存储
+export const productSortOrderStorage = {
+  // 获取所有产品的排序数据
+  async getAll(): Promise<Record<string, number>> {
+    const data = await settingsStorage.get<Record<string, number>>('product_sort_orders');
+    return data || {};
+  },
+
+  // 设置所有产品的排序数据
+  async setAll(orders: Record<string, number>): Promise<void> {
+    await settingsStorage.set('product_sort_orders', orders);
+  },
+
+  // 更新单个产品的排序值
+  async set(productId: string, order: number): Promise<void> {
+    const all = await this.getAll();
+    all[productId] = order;
+    await this.setAll(all);
+  },
+};
+
 // 产品步骤数据存储
 export const productStepsStorage = {
   // 获取产品步骤数据
@@ -437,6 +458,64 @@ export function convertToMl(amount: number, unit: string): number {
   }
 }
 
+// 单位换算因子（同组内从 fromUnit 到 toUnit 的换算）
+export function getUnitConversionFactor(fromUnit: string, toUnit: string): number {
+  // 先转为最小单位
+  const toMin: Record<string, number> = {
+    'ml': 1, 'L': 1000,
+    'g': 1, 'kg': 1000,
+  };
+  const fromMin = toMin[fromUnit];
+  const toMinVal = toMin[toUnit];
+  if (!fromMin || !toMinVal) return 1;
+  return fromMin / toMinVal;
+}
+
+// 计算单条原料成本（考虑单位换算）
+export function calculateIngredientLineCost(
+  ingredient: Ingredient,
+  inputAmount: number,
+  inputUnit: string,
+  actualCost?: number
+): number {
+  // 如果有手动覆盖的成本，优先使用
+  if (actualCost !== undefined && actualCost !== null) {
+    return actualCost;
+  }
+  
+  // 原料的进货价格和进货量
+  const purchasePrice = ingredient.purchasePrice || 0;
+  const purchaseSpec = ingredient.purchaseSpec || '';
+  
+  // 从进货规格中解析进货量
+  const specMatch = purchaseSpec.toLowerCase().match(/(\d+(?:\.\d+)?)/);
+  const purchaseAmount = specMatch ? parseFloat(specMatch[1]) : 0;
+  if (purchaseAmount <= 0 || purchasePrice <= 0) return 0;
+  
+  // 判断进货规格中的单位
+  const specLower = purchaseSpec.toLowerCase();
+  let purchaseUnit = ingredient.minUnit || 'g'; // 默认使用最小单位
+  if (specLower.includes('l') && !specLower.includes('ml')) {
+    purchaseUnit = 'L';
+  } else if (specLower.includes('ml')) {
+    purchaseUnit = 'ml';
+  } else if (specLower.includes('kg')) {
+    purchaseUnit = 'kg';
+  } else if (specLower.includes('g')) {
+    purchaseUnit = 'g';
+  }
+  
+  // 将 inputAmount 和 purchaseAmount 都转换为最小单位来计算
+  // 用量 → 最小单位
+  const inputToMin = getUnitConversionFactor(inputUnit, purchaseUnit);
+  const amountInPurchaseUnit = inputAmount * inputToMin;
+  
+  // 成本 = (用量 in 进货单位 / 进货量) * 进货价格
+  const cost = (amountInPurchaseUnit / purchaseAmount) * purchasePrice;
+  
+  return cost;
+}
+
 // 配置格式适配器：兼容数据库中旧格式（简单字符串数组）和代码期望的新格式（对象数组）
 function adaptConfigValue<T extends { enabled?: boolean }>(
   dbValue: any,
@@ -508,7 +587,7 @@ function migrateIngredientsToSteps(ingredients: ProductIngredient[]): Production
 }
 
 // 产品记录转前端类型
-async function productRecordToModel(record: any): Promise<Product> {
+async function productRecordToModel(record: any, sortOrderMap?: Record<string, number>): Promise<Product> {
   // 处理 ingredients 和 steps 数据
   let steps: ProductionStep[] = [];
   const ingredients: ProductIngredient[] = (record.ingredients || []).map((i: any) => ({
@@ -525,12 +604,14 @@ async function productRecordToModel(record: any): Promise<Product> {
       id: s.id,
       method: s.method,
       methodName: s.methodName,
+      note: s.note || undefined,
       ingredients: (s.ingredients || []).map((si: any) => ({
         id: si.id,
         ingredientId: si.ingredientId,
         ingredientName: si.ingredientName,
         inputAmount: si.inputAmount,
         inputUnit: si.inputUnit,
+        actualCost: si.actualCost || undefined,
       })),
       resultWeight: s.resultWeight,
       lockStandard: s.lockStandard || false,
@@ -583,6 +664,7 @@ async function productRecordToModel(record: any): Promise<Product> {
     operationPlans: operationPlans,
     abv: abv,
     abvManualOverride: abvManualOverride,
+    sortOrder: sortOrderMap?.[record.id],
     createdAt: new Date(record.created_at).getTime(),
     updatedAt: new Date(record.updated_at).getTime(),
   };
@@ -951,11 +1033,25 @@ export const productStorage = {
       }
       console.log('[productStorage.getAll] 成功获取产品，数量:', data?.length || 0);
       
+      // 获取排序数据
+      const sortOrderMap = await productSortOrderStorage.getAll();
+      
       // 转换为前端类型（异步）
       const products: Product[] = [];
       for (const record of data || []) {
-        products.push(await productRecordToModel(record));
+        products.push(await productRecordToModel(record, sortOrderMap));
       }
+      
+      // 按 sortOrder 排序（有 sortOrder 的按 sortOrder 升序，没有的按创建时间倒序）
+      products.sort((a, b) => {
+        const aHas = a.sortOrder !== undefined && a.sortOrder !== null;
+        const bHas = b.sortOrder !== undefined && b.sortOrder !== null;
+        if (aHas && bHas) return a.sortOrder! - b.sortOrder!;
+        if (aHas) return -1; // 有排序的排前面
+        if (bHas) return 1;
+        return b.createdAt - a.createdAt; // 都没有排序的按创建时间倒序
+      });
+      
       return products;
     } catch (error) {
       console.error('[productStorage.getAll] 获取产品失败:', error);
@@ -979,7 +1075,7 @@ export const productStorage = {
         console.error('[productStorage.getById] Supabase 查询错误:', error.message);
         throw new Error(`获取产品失败: ${error.message}`);
       }
-      return data ? await productRecordToModel(data) : null;
+      return data ? await productRecordToModel(data, await productSortOrderStorage.getAll()) : null;
     } catch (error) {
       console.error('[productStorage.getById] 获取产品失败:', error);
       return null;
@@ -1031,7 +1127,7 @@ export const productStorage = {
         }
       }
       
-      return await productRecordToModel(data);
+      return await productRecordToModel(data, await productSortOrderStorage.getAll());
     } catch (error) {
       console.error('[productStorage.create] 创建产品失败:', error);
       throw error;
@@ -1119,7 +1215,8 @@ export const productStorage = {
       }
       
       // 如果是原料产品，同步更新关联原料的 ABV
-      const updatedProduct = await productRecordToModel(data);
+      const sortOrderMapForUpdate = await productSortOrderStorage.getAll();
+      const updatedProduct = await productRecordToModel(data, sortOrderMapForUpdate);
       if (updatedProduct.isIngredientProduct && updatedProduct.abv > 0) {
         const ingredients = await ingredientStorage.getAll();
         const linkedIngredient = ingredients.find(i => i.relatedProductId === id);
@@ -1128,7 +1225,7 @@ export const productStorage = {
         }
       }
       
-      return data ? await productRecordToModel(data) : null;
+      return data ? await productRecordToModel(data, sortOrderMapForUpdate) : null;
     } catch (error) {
       console.error('[productStorage.update] 更新产品失败:', error);
       throw error;
@@ -1197,9 +1294,10 @@ export const productStorage = {
       }
       
       // 转换为前端类型（异步）
+      const sortOrderMapForIP = await productSortOrderStorage.getAll();
       const products: Product[] = [];
       for (const record of data || []) {
-        products.push(await productRecordToModel(record));
+        products.push(await productRecordToModel(record, sortOrderMapForIP));
       }
       return products;
     } catch (error) {
@@ -1458,7 +1556,7 @@ export const costCalculator = {
     return purchasePrice / totalAmount;
   },
 
-  // 计算产品成本（优先使用 steps，降级使用 ingredients）
+  // 计算产品成本（优先使用 steps，降级使用 ingredients，支持单位换算和手动覆盖）
   calculateProductCost(
     product: Product,
     ingredients: Ingredient[]
@@ -1471,8 +1569,7 @@ export const costCalculator = {
         for (const si of step.ingredients) {
           const ingredient = ingredients.find((i) => i.id === si.ingredientId);
           if (!ingredient) continue;
-          const cost = si.inputAmount * ingredient.minUnitPrice;
-          totalCost += cost;
+          totalCost += calculateIngredientLineCost(ingredient, si.inputAmount, si.unit || si.inputUnit, si.actualCost);
         }
       }
     } else {
@@ -1480,8 +1577,7 @@ export const costCalculator = {
       for (const pi of product.ingredients) {
         const ingredient = ingredients.find((i) => i.id === pi.ingredientId);
         if (!ingredient) continue;
-        const cost = pi.inputAmount * ingredient.minUnitPrice;
-        totalCost += cost;
+        totalCost += calculateIngredientLineCost(ingredient, pi.inputAmount, pi.unit || pi.inputUnit, (pi as any).actualCost);
       }
     }
 
