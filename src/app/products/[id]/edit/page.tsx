@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useProducts, useApp, usePasswordAuth } from '@/hooks/use-app';
 import { handleNumberInput } from '@/lib/utils';
-import { calculateProductABV, checkMissingABV } from '@/lib/storage';
+import { calculateProductABV, checkMissingABV, calculateIngredientLineCost } from '@/lib/storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -135,7 +135,7 @@ export default function ProductEditPage() {
         for (const si of step.ingredients) {
           const ingredient = (ingredients || []).find((i) => i.id === si.ingredientId);
           if (ingredient) {
-            total += si.inputAmount * ingredient.minUnitPrice;
+            total += calculateIngredientLineCost(ingredient, si.inputAmount, si.unit || si.inputUnit, si.actualCost);
           }
         }
       }
@@ -144,7 +144,7 @@ export default function ProductEditPage() {
       for (const pi of formData.ingredients) {
         const ingredient = (ingredients || []).find((i) => i.id === pi.ingredientId);
         if (ingredient) {
-          total += pi.inputAmount * ingredient.minUnitPrice;
+          total += calculateIngredientLineCost(ingredient, pi.inputAmount, pi.unit || pi.inputUnit, (pi as any).actualCost);
         }
       }
     }
@@ -827,63 +827,99 @@ export default function ProductEditPage() {
                       <div className="space-y-2">
                         {step.ingredients.map((si) => {
                           const ingredient = (ingredients || []).find((i) => i.id === si.ingredientId);
+                          const lineCost = ingredient
+                            ? calculateIngredientLineCost(ingredient, si.inputAmount, si.unit || si.inputUnit, si.actualCost)
+                            : 0;
+                          const isCostOverridden = si.actualCost !== undefined && si.actualCost !== null;
                           return (
-                            <div key={si.id} className="flex items-center gap-2 p-2 rounded bg-[var(--background)]">
-                              <div className="flex-1 min-w-0">
-                                <Combobox
-                                  options={ingredients.filter((ing) => ing.id).map((ing) => ({
-                                    value: ing.id,
-                                    label: `${ing.name} (${ing.category})${ing.abv > 0 ? ` · ${ing.abv}%vol` : ''}`,
-                                  }))}
-                                  value={si.ingredientId}
-                                  onChange={(v) => {
-                                    const ing = (ingredients || []).find((i) => i.id === v);
-                                    const defaultUnit = getIngredientDefaultUnit(v);
-                                    updateStepIngredient(step.id, si.id, {
-                                      ingredientId: v,
-                                      ingredientName: ing?.name || '',
-                                      inputUnit: defaultUnit,
-                                      unit: defaultUnit,
-                                    });
-                                  }}
-                                  placeholder="选择原料"
-                                  searchPlaceholder="搜索原料..."
-                                  className="bg-[var(--input)] h-8 text-sm"
-                                  popoverClassName="max-h-[150px]"
-                                />
-                              </div>
-                              <div className="flex items-center gap-1 w-[140px]">
-                                <Input
-                                  type="text"
-                                  value={numVal(`si-${si.id}`, si.inputAmount)}
-                                  onChange={(e) => {
-                                    const val = handleNumberInput(e.target.value, numVal(`si-${si.id}`, si.inputAmount));
-                                    setNumVal(`si-${si.id}`, val);
-                                    updateStepIngredient(step.id, si.id, { inputAmount: parseFloat(val) || 0 });
-                                  }}
-                                  className="bg-[var(--input)] number-font h-8 text-sm w-[70px]"
-                                />
-                                <select
-                                  value={si.unit || si.inputUnit || 'ml'}
-                                  onChange={(e) => {
-                                    const newUnit = e.target.value as 'ml' | 'g' | 'L' | 'kg';
-                                    updateStepIngredient(step.id, si.id, { unit: newUnit, inputUnit: newUnit });
-                                  }}
-                                  className="text-xs bg-[var(--input)] border border-[var(--border)] rounded px-1 h-8"
+                            <div key={si.id} className="p-2 rounded bg-[var(--background)] space-y-2">
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <Combobox
+                                    options={ingredients.filter((ing) => ing.id).map((ing) => ({
+                                      value: ing.id,
+                                      label: `${ing.name} (${ing.category})${ing.abv > 0 ? ` · ${ing.abv}%vol` : ''}`,
+                                    }))}
+                                    value={si.ingredientId}
+                                    onChange={(v) => {
+                                      const ing = (ingredients || []).find((i) => i.id === v);
+                                      const defaultUnit = getIngredientDefaultUnit(v);
+                                      updateStepIngredient(step.id, si.id, {
+                                        ingredientId: v,
+                                        ingredientName: ing?.name || '',
+                                        inputUnit: defaultUnit,
+                                        unit: defaultUnit,
+                                      });
+                                    }}
+                                    placeholder="选择原料"
+                                    searchPlaceholder="搜索原料..."
+                                    className="bg-[var(--input)] h-8 text-sm"
+                                    popoverClassName="max-h-[150px]"
+                                  />
+                                </div>
+                                <div className="flex items-center gap-1 w-[140px]">
+                                  <Input
+                                    type="text"
+                                    value={numVal(`si-${si.id}`, si.inputAmount)}
+                                    onChange={(e) => {
+                                      const val = handleNumberInput(e.target.value, numVal(`si-${si.id}`, si.inputAmount));
+                                      setNumVal(`si-${si.id}`, val);
+                                      updateStepIngredient(step.id, si.id, { inputAmount: parseFloat(val) || 0 });
+                                    }}
+                                    className="bg-[var(--input)] number-font h-8 text-sm w-[70px]"
+                                    step="0.001"
+                                    min="0"
+                                  />
+                                  <select
+                                    value={si.unit || si.inputUnit || 'ml'}
+                                    onChange={(e) => {
+                                      const newUnit = e.target.value as 'ml' | 'g' | 'L' | 'kg';
+                                      updateStepIngredient(step.id, si.id, { unit: newUnit, inputUnit: newUnit });
+                                    }}
+                                    className="text-xs bg-[var(--input)] border border-[var(--border)] rounded px-1 h-8"
+                                  >
+                                    {getUnitOptions(si.unit || si.inputUnit || 'ml').map(opt => (
+                                      <option key={opt.value} value={opt.value}>{opt.value}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => removeStepIngredient(step.id, si.id)}
+                                  className="h-7 w-7 shrink-0"
                                 >
-                                  {getUnitOptions(si.unit || si.inputUnit || 'ml').map(opt => (
-                                    <option key={opt.value} value={opt.value}>{opt.value}</option>
-                                  ))}
-                                </select>
+                                  <Trash2 className="h-3 w-3 text-[var(--destructive)]" />
+                                </Button>
                               </div>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => removeStepIngredient(step.id, si.id)}
-                                className="h-7 w-7 shrink-0"
-                              >
-                                <Trash2 className="h-3 w-3 text-[var(--destructive)]" />
-                              </Button>
+                              {/* 单条原料成本显示与编辑 */}
+                              {ingredient && si.inputAmount > 0 && (
+                                <div className="flex items-center gap-2 pl-1">
+                                  <span className="text-xs text-[var(--muted-foreground)]">成本：</span>
+                                  <span className={`text-xs number-font ${isCostOverridden ? 'text-[var(--warning)]' : 'text-[var(--primary)]'}`}>
+                                    ¥{lineCost.toFixed(2)}
+                                  </span>
+                                  {isCostOverridden && (
+                                    <span className="text-[10px] text-[var(--muted-foreground)]">(已覆盖)</span>
+                                  )}
+                                  <Input
+                                    type="text"
+                                    value={numVal(`cost-${si.id}`, si.actualCost)}
+                                    onChange={(e) => {
+                                      const val = handleNumberInput(e.target.value, numVal(`cost-${si.id}`, si.actualCost));
+                                      setNumVal(`cost-${si.id}`, val);
+                                      const numVal2 = parseFloat(val);
+                                      if (val === '' || isNaN(numVal2)) {
+                                        updateStepIngredient(step.id, si.id, { actualCost: undefined });
+                                      } else {
+                                        updateStepIngredient(step.id, si.id, { actualCost: numVal2 });
+                                      }
+                                    }}
+                                    className="bg-[var(--input)] number-font h-6 text-xs w-[70px]"
+                                    placeholder="覆盖成本"
+                                  />
+                                </div>
+                              )}
                             </div>
                           );
                         })}
@@ -896,6 +932,17 @@ export default function ProductEditPage() {
                           <Plus className="h-3 w-3 mr-1" />
                           添加原料
                         </Button>
+                      </div>
+
+                      {/* 步配备注 */}
+                      <div>
+                        <Label className="text-xs">备注</Label>
+                        <Input
+                          value={step.note || ''}
+                          onChange={(e) => updateStep(step.id, { note: e.target.value })}
+                          className="bg-[var(--input)] mt-1 h-9 text-sm"
+                          placeholder="可选备注..."
+                        />
                       </div>
 
                       {/* 有损耗时显示结果液重 */}
