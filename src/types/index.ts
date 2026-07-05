@@ -123,6 +123,7 @@ export interface Product {
   operationPlans?: OperationPlanInstance[]; // 具体操作方案（仅原料产品使用）
   abv: number; // 酒精度（%），新增字段
   abvManualOverride: boolean; // 是否手动覆盖ABV
+  sortOrder?: number; // 排序权重，越小越靠前，默认按创建时间排序
   createdAt: number;
   updatedAt: number;
 }
@@ -135,6 +136,7 @@ export interface StepIngredient {
   inputAmount: number;
   inputUnit: string;
   unit?: 'ml' | 'g' | 'L' | 'kg'; // 显示单位，默认跟随inputUnit（兼容旧数据）
+  actualCost?: number; // 手动覆盖的原料成本（优先于计算值）
 }
 
 // 操作步骤（分组结构）
@@ -143,6 +145,7 @@ export interface ProductionStep {
   method: string;       // 操作方式ID
   methodName: string;   // 操作方式名称
   ingredients: StepIngredient[];  // 同一步骤的多个原料
+  note?: string;        // 步配备注（可选）
   resultWeight?: number;
   lockStandard: boolean;
   fixedInput?: number;
