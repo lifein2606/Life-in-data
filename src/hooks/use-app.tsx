@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { GlobalConfig, DEFAULT_CONFIG, Ingredient, Product, ProductStock, OperationPlanInstance } from '@/types';
-import { configStorage, ingredientStorage, productStorage, stockStorage, costCalculator } from '@/lib/storage';
+import { configStorage, ingredientStorage, productStorage, stockStorage, costCalculator, productSortOrderStorage, calculateIngredientLineCost } from '@/lib/storage';
 
 // 应用模式：编辑模式或查阅模式
 export type AppMode = 'edit' | 'view' | null;
@@ -375,6 +375,12 @@ export function useProducts() {
     return stocks.find((s) => s.productId === productId);
   };
 
+  // 更新产品排序
+  const updateSortOrders = async (orders: Record<string, number>) => {
+    await productSortOrderStorage.setAll(orders);
+    await refreshData();
+  };
+
   const updateProductStock = async (productId: string, totalAvailable: number, packages: Array<{ specMl: number; quantity: number }>) => {
     // 更新总库存
     await stockStorage.updateTotalStock(productId, totalAvailable);
@@ -395,6 +401,7 @@ export function useProducts() {
     getProductCost,
     getProductStock,
     updateProductStock,
+    updateSortOrders,
     refreshData,
   };
 }
