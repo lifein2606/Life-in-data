@@ -20,7 +20,8 @@ import {
 } from '@/components/ui/select';
 import { Combobox, ComboboxOption, MultiCombobox } from '@/components/ui/combobox';
 import { PasswordDialog } from '@/components/password-dialog';
-import { ChevronLeft, Save, Plus, Trash2, AlertCircle, CheckCircle } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ChevronLeft, Save, Plus, Trash2, AlertCircle, CheckCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { ProductIngredient, ProductionStep, StepIngredient, Method, OperationPlanInstance } from '@/types';
 import { generateId, dependencyChecker } from '@/lib/storage';
 
@@ -36,6 +37,11 @@ export default function ProductEditPage() {
 
   const [showPasswordDialog, setShowPasswordDialog] = useState(!isAuthenticated && isEdit);
   const [loading, setLoading] = useState(false);
+  // 折叠展开状态：记录每个原料行的展开/折叠
+  const [expandedIngredients, setExpandedIngredients] = useState<Record<string, boolean>>({});
+  const toggleIngredientExpand = (id: string) => {
+    setExpandedIngredients(prev => ({ ...prev, [id]: !prev[id] }));
+  };
   // 数字输入显示值缓存（保留小数点输入中间状态）
   const [numDisplays, setNumDisplays] = useState<Record<string, string>>({});
   const numVal = (key: string, fallback: number | undefined | null) =>
@@ -831,96 +837,187 @@ export default function ProductEditPage() {
                             ? calculateIngredientLineCost(ingredient, si.inputAmount, si.unit || si.inputUnit, si.actualCost)
                             : 0;
                           const isCostOverridden = si.actualCost !== undefined && si.actualCost !== null;
+                          const isExpanded = expandedIngredients[si.id] || false;
+                          // 判断原料类型：自制原料（有配方/internal）或采购原料
+                          const isSelfMade = ingredient?.source === 'internal' && ingredient?.relatedProductId;
+                          // 获取自制原料的配方步骤
+                          const relatedProduct = isSelfMade
+                            ? products.find(p => p.id === ingredient.relatedProductId)
+                            : null;
+
                           return (
-                            <div key={si.id} className="p-2 rounded bg-[var(--background)] space-y-2">
-                              <div className="flex items-center gap-2">
-                                <div className="flex-1 min-w-0">
-                                  <Combobox
-                                    options={ingredients.filter((ing) => ing.id).map((ing) => ({
-                                      value: ing.id,
-                                      label: `${ing.name} (${ing.category})${ing.abv > 0 ? ` · ${ing.abv}%vol` : ''}`,
-                                    }))}
-                                    value={si.ingredientId}
-                                    onChange={(v) => {
-                                      const ing = (ingredients || []).find((i) => i.id === v);
-                                      const defaultUnit = getIngredientDefaultUnit(v);
-                                      updateStepIngredient(step.id, si.id, {
-                                        ingredientId: v,
-                                        ingredientName: ing?.name || '',
-                                        inputUnit: defaultUnit,
-                                        unit: defaultUnit,
-                                      });
-                                    }}
-                                    placeholder="选择原料"
-                                    searchPlaceholder="搜索原料..."
-                                    className="bg-[var(--input)] h-8 text-sm"
-                                    popoverClassName="max-h-[150px]"
-                                  />
-                                </div>
-                                <div className="flex items-center gap-1 w-[140px]">
-                                  <Input
-                                    type="text"
-                                    value={numVal(`si-${si.id}`, si.inputAmount)}
-                                    onChange={(e) => {
-                                      const val = handleNumberInput(e.target.value, numVal(`si-${si.id}`, si.inputAmount));
-                                      setNumVal(`si-${si.id}`, val);
-                                      updateStepIngredient(step.id, si.id, { inputAmount: parseFloat(val) || 0 });
-                                    }}
-                                    className="bg-[var(--input)] number-font h-8 text-sm w-[70px]"
-                                    step="0.001"
-                                    min="0"
-                                  />
-                                  <select
-                                    value={si.unit || si.inputUnit || 'ml'}
-                                    onChange={(e) => {
-                                      const newUnit = e.target.value as 'ml' | 'g' | 'L' | 'kg';
-                                      updateStepIngredient(step.id, si.id, { unit: newUnit, inputUnit: newUnit });
-                                    }}
-                                    className="text-xs bg-[var(--input)] border border-[var(--border)] rounded px-1 h-8"
-                                  >
-                                    {getUnitOptions(si.unit || si.inputUnit || 'ml').map(opt => (
-                                      <option key={opt.value} value={opt.value}>{opt.value}</option>
-                                    ))}
-                                  </select>
-                                </div>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => removeStepIngredient(step.id, si.id)}
-                                  className="h-7 w-7 shrink-0"
-                                >
-                                  <Trash2 className="h-3 w-3 text-[var(--destructive)]" />
-                                </Button>
-                              </div>
-                              {/* 单条原料成本显示与编辑 */}
-                              {ingredient && si.inputAmount > 0 && (
-                                <div className="flex items-center gap-2 pl-1">
-                                  <span className="text-xs text-[var(--muted-foreground)]">成本：</span>
-                                  <span className={`text-xs number-font ${isCostOverridden ? 'text-[var(--warning)]' : 'text-[var(--primary)]'}`}>
-                                    ¥{lineCost.toFixed(2)}
-                                  </span>
-                                  {isCostOverridden && (
-                                    <span className="text-[10px] text-[var(--muted-foreground)]">(已覆盖)</span>
+                            <Collapsible key={si.id} open={isExpanded} onOpenChange={() => toggleIngredientExpand(si.id)}>
+                              <div className="p-2 rounded bg-[var(--background)] space-y-2">
+                                <div className="flex items-center gap-2">
+                                  {/* 折叠/展开按钮 */}
+                                  {ingredient && (
+                                    <CollapsibleTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6 shrink-0 p-0"
+                                      >
+                                        {isExpanded ? (
+                                          <ChevronDown className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
+                                        ) : (
+                                          <ChevronRight className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
+                                        )}
+                                      </Button>
+                                    </CollapsibleTrigger>
                                   )}
-                                  <Input
-                                    type="text"
-                                    value={numVal(`cost-${si.id}`, si.actualCost)}
-                                    onChange={(e) => {
-                                      const val = handleNumberInput(e.target.value, numVal(`cost-${si.id}`, si.actualCost));
-                                      setNumVal(`cost-${si.id}`, val);
-                                      const numVal2 = parseFloat(val);
-                                      if (val === '' || isNaN(numVal2)) {
-                                        updateStepIngredient(step.id, si.id, { actualCost: undefined });
-                                      } else {
-                                        updateStepIngredient(step.id, si.id, { actualCost: numVal2 });
-                                      }
-                                    }}
-                                    className="bg-[var(--input)] number-font h-6 text-xs w-[70px]"
-                                    placeholder="覆盖成本"
-                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <Combobox
+                                      options={ingredients.filter((ing) => ing.id).map((ing) => ({
+                                        value: ing.id,
+                                        label: `${ing.name} (${ing.category})${ing.abv > 0 ? ` · ${ing.abv}%vol` : ''}`,
+                                      }))}
+                                      value={si.ingredientId}
+                                      onChange={(v) => {
+                                        const ing = (ingredients || []).find((i) => i.id === v);
+                                        const defaultUnit = getIngredientDefaultUnit(v);
+                                        updateStepIngredient(step.id, si.id, {
+                                          ingredientId: v,
+                                          ingredientName: ing?.name || '',
+                                          inputUnit: defaultUnit,
+                                          unit: defaultUnit,
+                                        });
+                                      }}
+                                      placeholder="选择原料"
+                                      searchPlaceholder="搜索原料..."
+                                      className="bg-[var(--input)] h-8 text-sm"
+                                      popoverClassName="max-h-[150px]"
+                                    />
+                                  </div>
+                                  <div className="flex items-center gap-1 w-[140px]">
+                                    <Input
+                                      type="text"
+                                      value={numVal(`si-${si.id}`, si.inputAmount)}
+                                      onChange={(e) => {
+                                        const val = handleNumberInput(e.target.value, numVal(`si-${si.id}`, si.inputAmount));
+                                        setNumVal(`si-${si.id}`, val);
+                                        updateStepIngredient(step.id, si.id, { inputAmount: parseFloat(val) || 0 });
+                                      }}
+                                      className="bg-[var(--input)] number-font h-8 text-sm w-[70px]"
+                                      step="0.001"
+                                      min="0"
+                                    />
+                                    <select
+                                      value={si.unit || si.inputUnit || 'ml'}
+                                      onChange={(e) => {
+                                        const newUnit = e.target.value as 'ml' | 'g' | 'L' | 'kg';
+                                        updateStepIngredient(step.id, si.id, { unit: newUnit, inputUnit: newUnit });
+                                      }}
+                                      className="text-xs bg-[var(--input)] border border-[var(--border)] rounded px-1 h-8"
+                                    >
+                                      {getUnitOptions(si.unit || si.inputUnit || 'ml').map(opt => (
+                                        <option key={opt.value} value={opt.value}>{opt.value}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => removeStepIngredient(step.id, si.id)}
+                                    className="h-7 w-7 shrink-0"
+                                  >
+                                    <Trash2 className="h-3 w-3 text-[var(--destructive)]" />
+                                  </Button>
                                 </div>
-                              )}
-                            </div>
+                                {/* 单条原料成本显示与编辑 */}
+                                {ingredient && si.inputAmount > 0 && (
+                                  <div className="flex items-center gap-2 pl-1">
+                                    <span className="text-xs text-[var(--muted-foreground)]">成本：</span>
+                                    <span className={`text-xs number-font ${isCostOverridden ? 'text-[var(--warning)]' : 'text-[var(--primary)]'}`}>
+                                      ¥{lineCost.toFixed(2)}
+                                    </span>
+                                    {isCostOverridden && (
+                                      <span className="text-[10px] text-[var(--muted-foreground)]">(已覆盖)</span>
+                                    )}
+                                    <Input
+                                      type="text"
+                                      value={numVal(`cost-${si.id}`, si.actualCost)}
+                                      onChange={(e) => {
+                                        const val = handleNumberInput(e.target.value, numVal(`cost-${si.id}`, si.actualCost));
+                                        setNumVal(`cost-${si.id}`, val);
+                                        const numVal2 = parseFloat(val);
+                                        if (val === '' || isNaN(numVal2)) {
+                                          updateStepIngredient(step.id, si.id, { actualCost: undefined });
+                                        } else {
+                                          updateStepIngredient(step.id, si.id, { actualCost: numVal2 });
+                                        }
+                                      }}
+                                      className="bg-[var(--input)] number-font h-6 text-xs w-[70px]"
+                                      placeholder="覆盖成本"
+                                    />
+                                  </div>
+                                )}
+                                {/* 折叠内容：显示原料详情 */}
+                                {ingredient && (
+                                  <CollapsibleContent>
+                                    <div className="mt-1 p-2 rounded bg-[var(--muted)] text-xs space-y-1.5">
+                                      {isSelfMade && relatedProduct ? (
+                                        <>
+                                          <div className="text-[var(--primary)] font-medium mb-1">自制原料 · 配方步骤</div>
+                                          {relatedProduct.steps && relatedProduct.steps.length > 0 ? (
+                                            relatedProduct.steps.map((rStep, rIdx) => (
+                                              <div key={rStep.id} className="pl-2 space-y-1">
+                                                <div className="flex items-center gap-1.5">
+                                                  <span className="text-[var(--muted-foreground)]">步骤{rIdx + 1}</span>
+                                                  <span className="text-[var(--foreground)]">{rStep.methodName}</span>
+                                                </div>
+                                                {rStep.ingredients.map((rSi) => (
+                                                  <div key={rSi.id} className="flex items-center justify-between pl-3">
+                                                    <span className="text-[var(--muted-foreground)]">{rSi.ingredientName}</span>
+                                                    <span className="number-font">{rSi.inputAmount}{rSi.unit || rSi.inputUnit}</span>
+                                                  </div>
+                                                ))}
+                                                {rStep.note && (
+                                                  <div className="pl-3 text-[var(--muted-foreground)]">备注：{rStep.note}</div>
+                                                )}
+                                              </div>
+                                            ))
+                                          ) : (
+                                            <div className="text-[var(--muted-foreground)] pl-2">暂无配方步骤</div>
+                                          )}
+                                          {relatedProduct.operationPlans && relatedProduct.operationPlans.length > 0 && (
+                                            <div className="mt-1">
+                                              <div className="text-[var(--primary)] font-medium mb-1">操作方案</div>
+                                              {relatedProduct.operationPlans.map((plan) => (
+                                                <div key={plan.templateId} className="pl-2 space-y-0.5">
+                                                  <span className="text-[var(--foreground)]">{plan.templateName}</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <>
+                                          <div className="text-[var(--primary)] font-medium mb-1">采购原料 · 购买信息</div>
+                                          <div className="flex items-center justify-between pl-2">
+                                            <span className="text-[var(--muted-foreground)]">进货规格</span>
+                                            <span className="number-font">{ingredient.purchaseSpec}</span>
+                                          </div>
+                                          <div className="flex items-center justify-between pl-2">
+                                            <span className="text-[var(--muted-foreground)]">进货单价</span>
+                                            <span className="number-font">¥{ingredient.purchasePrice.toFixed(2)}/{ingredient.purchaseUnit}</span>
+                                          </div>
+                                          <div className="flex items-center justify-between pl-2">
+                                            <span className="text-[var(--muted-foreground)]">最小单位成本</span>
+                                            <span className="number-font text-[var(--primary)]">¥{ingredient.minUnitPrice.toFixed(4)}/{ingredient.minUnit}</span>
+                                          </div>
+                                          {ingredient.abv > 0 && (
+                                            <div className="flex items-center justify-between pl-2">
+                                              <span className="text-[var(--muted-foreground)]">酒精度</span>
+                                              <span className="number-font">{ingredient.abv}%</span>
+                                            </div>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                  </CollapsibleContent>
+                                )}
+                              </div>
+                            </Collapsible>
                           );
                         })}
                         <Button
