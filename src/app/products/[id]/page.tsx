@@ -535,8 +535,8 @@ export default function ProductDetailPage() {
                     const expandKey = `${si.ingredientId}-${index}`;
                     const isExpanded = expandedIngredients[expandKey] || false;
                     const ing = (ingredients || []).find(i => i.id === si.ingredientId);
-                    // 查找原料对应的产品（如果是自制原料）
-                    const ingredientProduct = ing?.productId ? products.find(p => p.id === ing.productId) : null;
+                    // 查找原料对应的产品（如果是自制原料）- 使用 relatedProductId
+                    const ingredientProduct = ing?.relatedProductId ? products.find(p => p.id === ing.relatedProductId) : null;
                     
                     return (
                     <Collapsible key={expandKey} open={isExpanded} onOpenChange={() => toggleIngredientExpand(expandKey)}>
@@ -582,33 +582,40 @@ export default function ProductDetailPage() {
                       <CollapsibleContent>
                         <div className="ml-6 mt-2 p-3 rounded-lg bg-[var(--accent)] border border-[var(--border)]">
                           {ingredientProduct ? (
-                            // 自制原料：显示配方信息
+                            // 自制原料：显示配方信息（按当前换算比例）
                             <div className="space-y-2">
-                              <div className="text-xs font-medium text-[var(--foreground)]">自制原料配方</div>
+                              <div className="text-xs font-medium text-[var(--foreground)]">
+                                自制原料配方（当前用量: {si.scaledAmount.toFixed(1)}{si.unit}）
+                              </div>
                               {ingredientProduct.steps && ingredientProduct.steps.length > 0 ? (
                                 <div className="space-y-2">
-                                  {ingredientProduct.steps.map((step, stepIdx) => (
-                                    <div key={step.id || stepIdx} className="text-xs">
-                                      <div className="font-medium text-[var(--foreground)]">
-                                        步骤{stepIdx + 1}: {step.operationName}
-                                      </div>
-                                      {step.ingredients && step.ingredients.length > 0 && (
-                                        <div className="ml-2 text-[var(--muted-foreground)]">
-                                          {step.ingredients.map((si2, si2Idx) => {
-                                            const ing2 = ingredients.find(i => i.id === si2.ingredientId);
-                                            return (
-                                              <div key={si2Idx}>
-                                                • {ing2?.name || '未知原料'}: {si2.amount}{si2.unit}
-                                              </div>
-                                            );
-                                          })}
+                                  {ingredientProduct.steps.map((step, stepIdx) => {
+                                    // 计算该步骤的换算比例
+                                    const stepScale = si.scaledAmount / ingredientProduct.standardOutput;
+                                    return (
+                                      <div key={step.id || stepIdx} className="text-xs">
+                                        <div className="font-medium text-[var(--foreground)]">
+                                          步骤{stepIdx + 1}: {step.operationName}
                                         </div>
-                                      )}
-                                      {step.note && (
-                                        <div className="ml-2 text-[var(--muted-foreground)] italic">备注: {step.note}</div>
-                                      )}
-                                    </div>
-                                  ))}
+                                        {step.ingredients && step.ingredients.length > 0 && (
+                                          <div className="ml-2 text-[var(--muted-foreground)]">
+                                            {step.ingredients.map((si2, si2Idx) => {
+                                              const ing2 = ingredients.find(i => i.id === si2.ingredientId);
+                                              const scaledAmt = si2.amount * stepScale;
+                                              return (
+                                                <div key={si2Idx}>
+                                                  • {ing2?.name || '未知原料'}: {scaledAmt.toFixed(1)}{si2.unit}
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+                                        {step.note && (
+                                          <div className="ml-2 text-[var(--muted-foreground)] italic">备注: {step.note}</div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               ) : (
                                 <div className="text-xs text-[var(--muted-foreground)]">无配方步骤</div>
@@ -620,23 +627,24 @@ export default function ProductDetailPage() {
                               <div className="text-xs font-medium text-[var(--foreground)]">采购原料信息</div>
                               {ing ? (
                                 <>
-                                  {ing.unitPrice !== undefined && (
+                                  <div className="text-xs text-[var(--muted-foreground)]">
+                                    当前用量: <span className="text-[var(--primary)]">{si.scaledAmount.toFixed(1)}{si.unit}</span>
+                                  </div>
+                                  {ing.purchasePrice !== undefined && (
                                     <div className="text-xs text-[var(--muted-foreground)]">
-                                      进货价: ¥{ing.unitPrice.toFixed(2)}/{ing.purchaseUnit || 'kg'}
+                                      进货价: ¥{ing.purchasePrice.toFixed(2)}/{ing.purchaseUnit || 'kg'}
                                     </div>
                                   )}
-                                  {ing.supplier && (
+                                  {ing.minUnitPrice !== undefined && (
                                     <div className="text-xs text-[var(--muted-foreground)]">
-                                      供应商: {ing.supplier}
+                                      最小单位价: ¥{ing.minUnitPrice.toFixed(4)}/{ing.minUnit || 'g'}
                                     </div>
                                   )}
-                                  {ing.notes && (
-                                    <div className="text-xs text-[var(--muted-foreground)]">
-                                      备注: {ing.notes}
-                                    </div>
-                                  )}
-                                  {!ing.unitPrice && !ing.supplier && !ing.notes && (
-                                    <div className="text-xs text-[var(--muted-foreground)]">暂无详细信息</div>
+                                  <div className="text-xs text-[var(--muted-foreground)]">
+                                    来源: {ing.source === 'purchase' ? '外部采购' : '内部生产'}
+                                  </div>
+                                  {!ing.purchasePrice && !ing.minUnitPrice && (
+                                    <div className="text-xs text-[var(--muted-foreground)]">暂无详细价格信息</div>
                                   )}
                                 </>
                               ) : (
