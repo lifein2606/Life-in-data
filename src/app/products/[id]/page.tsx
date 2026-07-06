@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/tooltip';
 import { ChevronLeft, Edit2, Plus, Minus, Lock, ClipboardList } from 'lucide-react';
 import { PackageStock, ProductionStep, OperationPlanInstance } from '@/types';
-import { costCalculator } from '@/lib/storage';
+import { costCalculator, calculateIngredientLineCost } from '@/lib/storage';
 
 export default function ProductDetailPage() {
   const router = useRouter();
@@ -261,6 +261,11 @@ export default function ProductDetailPage() {
                 </span>
               )}
             </div>
+            {step.note && (
+              <div className="text-xs text-[var(--muted-foreground)] pl-4 pb-1">
+                备注：{step.note}
+              </div>
+            )}
             <div className="space-y-2 pl-4">
               {step.ingredients.map((si) => {
                 const ing = (ingredients || []).find(i => i.id === si.ingredientId);
@@ -286,6 +291,11 @@ export default function ProductDetailPage() {
                     <span className="number-font text-sm">
                       {si.inputAmount}{si.unit || si.inputUnit}
                     </span>
+                    {ing && si.inputAmount > 0 && (
+                      <div className="text-xs text-[var(--primary)] mt-0.5 number-font">
+                        ¥{calculateIngredientLineCost(ing, si.inputAmount, si.unit || si.inputUnit, si.actualCost).toFixed(2)}
+                      </div>
+                    )}
                     {step.resultWeight !== undefined && si.inputAmount > 0 && (
                       <div className="text-xs text-[var(--muted-foreground)] mt-1">
                         → {step.resultWeight}{si.unit || si.inputUnit}
@@ -603,6 +613,29 @@ export default function ProductDetailPage() {
             </Card>
           )}
 
+          {/* 具体操作方案 - 原料产品且有操作方案数据时显示（放在库存散量前面） */}
+          {isIngredientProduct && product.operationPlans && product.operationPlans.length > 0 && (
+            <Card className="glass-card">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">具体操作方案</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {product.operationPlans.map((plan) => (
+                  <div key={plan.templateId} className="p-3 rounded-lg bg-[var(--muted)]">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge className="bg-[var(--primary)] text-[var(--primary-foreground)] text-xs">
+                        {plan.templateName}
+                      </Badge>
+                    </div>
+                    <div className="space-y-0">
+                      {renderOperationPlanFieldValue(plan)}
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
           {/* 库存管理 - 查阅模式和编辑模式都可以操作 */}
           <Card className="glass-card">
             <CardHeader className="pb-3 flex flex-row items-center justify-between">
@@ -710,29 +743,6 @@ export default function ProductDetailPage() {
               )}
             </CardContent>
           </Card>
-
-          {/* 具体操作方案 - 原料产品且有操作方案数据时显示 */}
-          {isIngredientProduct && product.operationPlans && product.operationPlans.length > 0 && (
-            <Card className="glass-card">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">具体操作方案</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {product.operationPlans.map((plan) => (
-                  <div key={plan.templateId} className="p-3 rounded-lg bg-[var(--muted)]">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge className="bg-[var(--primary)] text-[var(--primary-foreground)] text-xs">
-                        {plan.templateName}
-                      </Badge>
-                    </div>
-                    <div className="space-y-0">
-                      {renderOperationPlanFieldValue(plan)}
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
         </div>
       </div>
     </TooltipProvider>
