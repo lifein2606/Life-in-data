@@ -592,7 +592,8 @@ export default function ProductDetailPage() {
                                   {ingredientProduct.steps.map((step, stepIdx) => {
                                     // 计算该步骤的换算比例（安全检查）
                                     const standardOutput = ingredientProduct.standardOutput || 0;
-                                    const stepScale = standardOutput > 0 ? si.scaledAmount / standardOutput : 0;
+                                    // 如果标准出品量为0，直接使用原始用量；否则按比例换算
+                                    const stepScale = standardOutput > 0 ? si.scaledAmount / standardOutput : 1;
                                     return (
                                       <div key={step.id || stepIdx} className="text-xs">
                                         <div className="font-medium text-[var(--foreground)]">
@@ -602,12 +603,13 @@ export default function ProductDetailPage() {
                                           <div className="ml-2 text-[var(--muted-foreground)]">
                                             {step.ingredients.map((si2, si2Idx) => {
                                               const ing2 = ingredients.find(i => i.id === si2.ingredientId);
-                                              const scaledAmt = si2.amount * stepScale;
-                                              // 防止 NaN 显示
-                                              const displayAmt = isNaN(scaledAmt) ? 0 : scaledAmt;
+                                              // 如果标准出品量为0，显示原始用量；否则显示换算后的用量
+                                              const scaledAmt = standardOutput > 0 ? si2.amount * stepScale : si2.amount;
+                                              const displayAmt = isNaN(scaledAmt) ? si2.amount : scaledAmt;
                                               return (
                                                 <div key={si2Idx}>
                                                   • {ing2?.name || '未知原料'}: {displayAmt.toFixed(1)}{si2.unit}
+                                                  {standardOutput === 0 && <span className="text-[var(--warning)]"> (未设置出品量)</span>}
                                                 </div>
                                               );
                                             })}
