@@ -590,8 +590,9 @@ export default function ProductDetailPage() {
                               {ingredientProduct.steps && ingredientProduct.steps.length > 0 ? (
                                 <div className="space-y-2">
                                   {ingredientProduct.steps.map((step, stepIdx) => {
-                                    // 计算该步骤的换算比例
-                                    const stepScale = si.scaledAmount / ingredientProduct.standardOutput;
+                                    // 计算该步骤的换算比例（安全检查）
+                                    const standardOutput = ingredientProduct.standardOutput || 0;
+                                    const stepScale = standardOutput > 0 ? si.scaledAmount / standardOutput : 0;
                                     return (
                                       <div key={step.id || stepIdx} className="text-xs">
                                         <div className="font-medium text-[var(--foreground)]">
@@ -602,9 +603,11 @@ export default function ProductDetailPage() {
                                             {step.ingredients.map((si2, si2Idx) => {
                                               const ing2 = ingredients.find(i => i.id === si2.ingredientId);
                                               const scaledAmt = si2.amount * stepScale;
+                                              // 防止 NaN 显示
+                                              const displayAmt = isNaN(scaledAmt) ? 0 : scaledAmt;
                                               return (
                                                 <div key={si2Idx}>
-                                                  • {ing2?.name || '未知原料'}: {scaledAmt.toFixed(1)}{si2.unit}
+                                                  • {ing2?.name || '未知原料'}: {displayAmt.toFixed(1)}{si2.unit}
                                                 </div>
                                               );
                                             })}
