@@ -536,7 +536,9 @@ export default function ProductDetailPage() {
                     const isExpanded = expandedIngredients[expandKey] || false;
                     const ing = (ingredients || []).find(i => i.id === si.ingredientId);
                     // 查找原料对应的产品（如果是自制原料）- 使用 relatedProductId
-                    const ingredientProduct = ing?.relatedProductId ? products.find(p => p.id === ing.relatedProductId) : null;
+                    const ingredientProduct = (ing?.relatedProductId && products) 
+                      ? products.find(p => p.id === ing.relatedProductId) 
+                      : null;
                     
                     return (
                     <Collapsible key={expandKey} open={isExpanded} onOpenChange={() => toggleIngredientExpand(expandKey)}>
@@ -602,7 +604,7 @@ export default function ProductDetailPage() {
                                         {step.ingredients && step.ingredients.length > 0 && (
                                           <div className="ml-2 text-[var(--muted-foreground)]">
                                             {step.ingredients.map((si2, si2Idx) => {
-                                              const ing2 = ingredients.find(i => i.id === si2.ingredientId);
+                                              const ing2 = (ingredients || []).find(i => i.id === si2.ingredientId);
                                               // 如果标准出品量为0，显示原始用量；否则显示换算后的用量
                                               const scaledAmt = standardOutput > 0 ? si2.amount * stepScale : si2.amount;
                                               const displayAmt = isNaN(scaledAmt) ? si2.amount : scaledAmt;
