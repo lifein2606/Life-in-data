@@ -15,9 +15,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { ChevronLeft, Edit2, Plus, Minus, Lock, ClipboardList } from 'lucide-react';
+import { ChevronLeft, Edit2, Plus, Minus, Lock, ClipboardList, ChevronDown, ChevronRight } from 'lucide-react';
 import { PackageStock, ProductionStep, OperationPlanInstance } from '@/types';
 import { costCalculator, calculateIngredientLineCost } from '@/lib/storage';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 export default function ProductDetailPage() {
   const router = useRouter();
@@ -39,6 +40,11 @@ export default function ProductDetailPage() {
     setNumDisplays(prev => ({ ...prev, [key]: val }));
   const [packageCounts, setPackageCounts] = useState<Record<string, number>>({});
 
+  // 折叠展开状态：记录每个原料行的展开/折叠
+  const [expandedIngredients, setExpandedIngredients] = useState<Record<string, boolean>>({});
+  const toggleIngredientExpand = (id: string) => {
+    setExpandedIngredients(prev => ({ ...prev, [id]: !prev[id] }));
+  };
   // 是否处于编辑模式
   const isEditMode = mode === 'edit';
 
@@ -269,40 +275,134 @@ export default function ProductDetailPage() {
             <div className="space-y-2 pl-4">
               {step.ingredients.map((si) => {
                 const ing = (ingredients || []).find(i => i.id === si.ingredientId);
+                const isExpanded = expandedIngredients[si.id] || false;
+                const isSelfMade = ing?.source === 'internal' && ing?.relatedProductId;
+                const relatedProduct = isSelfMade
+                  ? products.find(p => p.id === ing?.relatedProductId)
+                  : null;
+                // 换算比例：当前步骤原料用量 / 原料产品的出品标准
+                const stepScaledAmount = product && product.standardOutput > 0
+                  ? si.inputAmount * (targetOutput / product.standardOutput)
+                  : si.inputAmount;
+
                 return (
-                <div
-                  key={si.id}
-                  className="flex items-center justify-between py-2 px-3 rounded-lg bg-[var(--muted)]"
-                >
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm truncate">{si.ingredientName}</span>
-                    {ing && ing.abv > 0 && (
-                      <span className="text-xs text-[var(--primary)] ml-1.5">{ing.abv}%vol</span>
-                    )}
-                    <div className="flex items-center gap-2 mt-1">
-                      {step.lockStandard && step.fixedInput && (
-                        <span className="text-xs text-[var(--muted-foreground)]">
-                          固定: {step.fixedInput}{si.unit || si.inputUnit}→{step.fixedOutput}{si.unit || si.inputUnit}
+                <Collapsible key={si.id} open={isExpanded} onOpenChange={() => toggleIngredientExpand(si.id)}>
+                  <div className="py-2 px-3 rounded-lg bg-[var(--muted)] space-y-1">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                        {ing && (
+                          <CollapsibleTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0 p-0">
+                              {isExpanded ? (
+                                <ChevronDown className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
+                              ) : (
+                                <ChevronRight className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
+                              )}
+                            </Button>
+                          </CollapsibleTrigger>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm truncate">{si.ingredientName}</span>
+                          {ing && ing.abv > 0 && (
+                            <span className="text-xs text-[var(--primary)] ml-1.5">{ing.abv}%vol</span>
+                          )}
+                          <div className="flex items-center gap-2 mt-1">
+                            {step.lockStandard && step.fixedInput && (
+                              <span className="text-xs text-[var(--muted-foreground)]">
+                                固定: {step.fixedInput}{si.unit || si.inputUnit}→{step.fixedOutput}{si.unit || si.inputUnit}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="number-font text-sm">
+                          {si.inputAmount}{si.unit || si.inputUnit}
                         </span>
-                      )}
+                        {ing && si.inputAmount > 0 && (
+                          <div className="text-xs text-[var(--primary)] mt-0.5 number-font">
+                            ¥{calculateIngredientLineCost(ing, si.inputAmount, si.unit || si.inputUnit, si.actualCost).toFixed(2)}
+                          </div>
+                        )}
+                        {step.resultWeight !== undefined && si.inputAmount > 0 && (
+                          <div className="text-xs text-[var(--muted-foreground)] mt-1">
+                            → {step.resultWeight}{si.unit || si.inputUnit}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <span className="number-font text-sm">
-                      {si.inputAmount}{si.unit || si.inputUnit}
-                    </span>
-                    {ing && si.inputAmount > 0 && (
-                      <div className="text-xs text-[var(--primary)] mt-0.5 number-font">
-                        ¥{calculateIngredientLineCost(ing, si.inputAmount, si.unit || si.inputUnit, si.actualCost).toFixed(2)}
-                      </div>
+                    {/* 折叠内容：显示原料详情 */}
+                    {ing && (
+                      <CollapsibleContent>
+                        <div className="mt-1 p-2 rounded bg-[var(--background)] text-xs space-y-1.5">
+                          {isSelfMade && relatedProduct ? (
+                            <>
+                              <div className="text-[var(--primary)] font-medium mb-1">自制原料 · 配方步骤</div>
+                              {(relatedProduct.steps || []).length > 0 ? (
+                                (relatedProduct.steps || []).map((rStep, rIdx) => (
+                                  <div key={rStep.id} className="pl-2 space-y-1">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-[var(--muted-foreground)]">步骤{rIdx + 1}</span>
+                                      <span className="text-[var(--foreground)]">{rStep.methodName}</span>
+                                    </div>
+                                    {(rStep.ingredients || []).map((rSi) => {
+                                      const scaledAmt = relatedProduct.standardOutput > 0
+                                        ? rSi.inputAmount * (stepScaledAmount / relatedProduct.standardOutput)
+                                        : rSi.inputAmount;
+                                      return (
+                                        <div key={rSi.id} className="flex items-center justify-between pl-3">
+                                          <span className="text-[var(--muted-foreground)]">{rSi.ingredientName}</span>
+                                          <span className="number-font">{scaledAmt.toFixed(1)}{rSi.unit || rSi.inputUnit}</span>
+                                        </div>
+                                      );
+                                    })}
+                                    {rStep.note && (
+                                      <div className="pl-3 text-[var(--muted-foreground)]">备注：{rStep.note}</div>
+                                    )}
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="text-[var(--muted-foreground)] pl-2">暂无配方步骤</div>
+                              )}
+                              {(relatedProduct.operationPlans || []).length > 0 && (
+                                <div className="mt-1">
+                                  <div className="text-[var(--primary)] font-medium mb-1">操作方案</div>
+                                  {(relatedProduct.operationPlans || []).map((plan) => (
+                                    <div key={plan.templateId} className="pl-2 space-y-0.5">
+                                      <span className="text-[var(--foreground)]">{plan.templateName}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <div className="text-[var(--primary)] font-medium mb-1">采购原料 · 购买信息</div>
+                              <div className="flex items-center justify-between pl-2">
+                                <span className="text-[var(--muted-foreground)]">进货规格</span>
+                                <span className="number-font">{ing?.purchaseSpec || '-'}</span>
+                              </div>
+                              <div className="flex items-center justify-between pl-2">
+                                <span className="text-[var(--muted-foreground)]">进货单价</span>
+                                <span className="number-font">¥{(ing?.purchasePrice || 0).toFixed(2)}/{ing?.purchaseUnit || '-'}</span>
+                              </div>
+                              <div className="flex items-center justify-between pl-2">
+                                <span className="text-[var(--muted-foreground)]">最小单位成本</span>
+                                <span className="number-font text-[var(--primary)]">¥{(ing?.minUnitPrice || 0).toFixed(4)}/{ing?.minUnit || '-'}</span>
+                              </div>
+                              {ing && ing.abv > 0 && (
+                                <div className="flex items-center justify-between pl-2">
+                                  <span className="text-[var(--muted-foreground)]">酒精度</span>
+                                  <span className="number-font">{ing.abv}%</span>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </CollapsibleContent>
                     )}
-                    {step.resultWeight !== undefined && si.inputAmount > 0 && (
-                      <div className="text-xs text-[var(--muted-foreground)] mt-1">
-                        → {step.resultWeight}{si.unit || si.inputUnit}
-                      </div>
-                    )}
                   </div>
-                </div>
+                </Collapsible>
                 );
               })}
             </div>
@@ -347,33 +447,129 @@ export default function ProductDetailPage() {
               )}
             </div>
             <div className="space-y-2 pl-4">
-              {methodIngredients.map((pi) => (
-                <div
-                  key={pi.id}
-                  className="flex items-center justify-between py-2 px-3 rounded-lg bg-[var(--muted)]"
-                >
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm truncate">{pi.ingredientName}</span>
-                    <div className="flex items-center gap-2 mt-1">
-                      {pi.lockStandard && pi.fixedInput && (
-                        <span className="text-xs text-[var(--muted-foreground)]">
-                          固定: {pi.fixedInput}{pi.unit || pi.inputUnit}→{pi.fixedOutput}{pi.unit || pi.inputUnit}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <span className="number-font text-sm">
-                      {pi.inputAmount}{pi.unit || pi.inputUnit}
-                    </span>
-                    {pi.resultWeight !== undefined && (
-                      <div className="text-xs text-[var(--muted-foreground)] mt-1">
-                        → {pi.resultWeight}{pi.unit || pi.inputUnit}
+              {methodIngredients.map((pi) => {
+                const ing = (ingredients || []).find(i => i.id === pi.ingredientId);
+                const isExpanded = expandedIngredients[pi.id] || false;
+                const isSelfMade = ing?.source === 'internal' && ing?.relatedProductId;
+                const relatedProduct = isSelfMade
+                  ? products.find(p => p.id === ing?.relatedProductId)
+                  : null;
+                const fallbackScaledAmount = product && product.standardOutput > 0
+                  ? pi.inputAmount * (targetOutput / product.standardOutput)
+                  : pi.inputAmount;
+
+                return (
+                <Collapsible key={pi.id} open={isExpanded} onOpenChange={() => toggleIngredientExpand(pi.id)}>
+                  <div className="py-2 px-3 rounded-lg bg-[var(--muted)] space-y-1">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                        {ing && (
+                          <CollapsibleTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0 p-0">
+                              {isExpanded ? (
+                                <ChevronDown className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
+                              ) : (
+                                <ChevronRight className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
+                              )}
+                            </Button>
+                          </CollapsibleTrigger>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm truncate">{pi.ingredientName}</span>
+                          <div className="flex items-center gap-2 mt-1">
+                            {pi.lockStandard && pi.fixedInput && (
+                              <span className="text-xs text-[var(--muted-foreground)]">
+                                固定: {pi.fixedInput}{pi.unit || pi.inputUnit}→{pi.fixedOutput}{pi.unit || pi.inputUnit}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
+                      <div className="text-right">
+                        <span className="number-font text-sm">
+                          {pi.inputAmount}{pi.unit || pi.inputUnit}
+                        </span>
+                        {pi.resultWeight !== undefined && (
+                          <div className="text-xs text-[var(--muted-foreground)] mt-1">
+                            → {pi.resultWeight}{pi.unit || pi.inputUnit}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {/* 折叠内容：显示原料详情 */}
+                    {ing && (
+                      <CollapsibleContent>
+                        <div className="mt-1 p-2 rounded bg-[var(--background)] text-xs space-y-1.5">
+                          {isSelfMade && relatedProduct ? (
+                            <>
+                              <div className="text-[var(--primary)] font-medium mb-1">自制原料 · 配方步骤</div>
+                              {(relatedProduct.steps || []).length > 0 ? (
+                                (relatedProduct.steps || []).map((rStep, rIdx) => (
+                                  <div key={rStep.id} className="pl-2 space-y-1">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-[var(--muted-foreground)]">步骤{rIdx + 1}</span>
+                                      <span className="text-[var(--foreground)]">{rStep.methodName}</span>
+                                    </div>
+                                    {(rStep.ingredients || []).map((rSi) => {
+                                      const scaledAmt = relatedProduct.standardOutput > 0
+                                        ? rSi.inputAmount * (fallbackScaledAmount / relatedProduct.standardOutput)
+                                        : rSi.inputAmount;
+                                      return (
+                                        <div key={rSi.id} className="flex items-center justify-between pl-3">
+                                          <span className="text-[var(--muted-foreground)]">{rSi.ingredientName}</span>
+                                          <span className="number-font">{scaledAmt.toFixed(1)}{rSi.unit || rSi.inputUnit}</span>
+                                        </div>
+                                      );
+                                    })}
+                                    {rStep.note && (
+                                      <div className="pl-3 text-[var(--muted-foreground)]">备注：{rStep.note}</div>
+                                    )}
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="text-[var(--muted-foreground)] pl-2">暂无配方步骤</div>
+                              )}
+                              {(relatedProduct.operationPlans || []).length > 0 && (
+                                <div className="mt-1">
+                                  <div className="text-[var(--primary)] font-medium mb-1">操作方案</div>
+                                  {(relatedProduct.operationPlans || []).map((plan) => (
+                                    <div key={plan.templateId} className="pl-2 space-y-0.5">
+                                      <span className="text-[var(--foreground)]">{plan.templateName}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <div className="text-[var(--primary)] font-medium mb-1">采购原料 · 购买信息</div>
+                              <div className="flex items-center justify-between pl-2">
+                                <span className="text-[var(--muted-foreground)]">进货规格</span>
+                                <span className="number-font">{ing?.purchaseSpec || '-'}</span>
+                              </div>
+                              <div className="flex items-center justify-between pl-2">
+                                <span className="text-[var(--muted-foreground)]">进货单价</span>
+                                <span className="number-font">¥{(ing?.purchasePrice || 0).toFixed(2)}/{ing?.purchaseUnit || '-'}</span>
+                              </div>
+                              <div className="flex items-center justify-between pl-2">
+                                <span className="text-[var(--muted-foreground)]">最小单位成本</span>
+                                <span className="number-font text-[var(--primary)]">¥{(ing?.minUnitPrice || 0).toFixed(4)}/{ing?.minUnit || '-'}</span>
+                              </div>
+                              {ing && ing.abv > 0 && (
+                                <div className="flex items-center justify-between pl-2">
+                                  <span className="text-[var(--muted-foreground)]">酒精度</span>
+                                  <span className="number-font">{ing.abv}%</span>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </CollapsibleContent>
                     )}
                   </div>
-                </div>
-              ))}
+                </Collapsible>
+                );
+              })}
             </div>
           </div>
         );
@@ -526,44 +722,138 @@ export default function ProductDetailPage() {
 
               {scaledIngredients.length > 0 && (
                 <div className="space-y-2">
-                  {scaledIngredients.map((si, index) => (
-                    <div
-                      key={`${si.ingredientId}-${index}`}
-                      className="flex items-center justify-between py-2 px-3 rounded-lg bg-[var(--muted)]"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <span className="text-sm truncate">{si.ingredientName}</span>
-                        {(() => {
-                          const ing = (ingredients || []).find(i => i.id === si.ingredientId);
-                          return ing && ing.abv > 0 ? (
-                            <span className="text-xs text-[var(--primary)] ml-1.5">{ing.abv}%vol</span>
-                          ) : null;
-                        })()}
-                        <div className="text-xs text-[var(--muted-foreground)] mt-1">
-                          {si.methodName}
-                          {si.resultWeight !== undefined && si.scaledAmount > 0 && (() => {
-                            const ratio = ((si.scaledAmount - si.scaledResultWeight!) / si.scaledAmount * 100);
-                            return <span className="ml-1.5 text-[var(--warning)]">损耗{ratio.toFixed(1)}%</span>;
-                          })()}
-                          {si.scaledResultWeight !== undefined && (
-                            <span className="ml-1.5">
-                              → {si.scaledResultWeight.toFixed(1)}g
-                            </span>
+                  {scaledIngredients.map((si, index) => {
+                    const ing = (ingredients || []).find(i => i.id === si.ingredientId);
+                    const isExpanded = expandedIngredients[si.ingredientId] || false;
+                    const isSelfMade = ing?.source === 'internal' && ing?.relatedProductId;
+                    const relatedProduct = isSelfMade
+                      ? products.find(p => p.id === ing?.relatedProductId)
+                      : null;
+
+                    return (
+                      <Collapsible
+                        key={`${si.ingredientId}-${index}`}
+                        open={isExpanded}
+                        onOpenChange={() => toggleIngredientExpand(si.ingredientId)}
+                      >
+                        <div className="py-2 px-3 rounded-lg bg-[var(--muted)] space-y-1">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                              {ing && (
+                                <CollapsibleTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0 p-0">
+                                    {isExpanded ? (
+                                      <ChevronDown className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
+                                    ) : (
+                                      <ChevronRight className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
+                                    )}
+                                  </Button>
+                                </CollapsibleTrigger>
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <span className="text-sm truncate">{si.ingredientName}</span>
+                                {ing && ing.abv > 0 && (
+                                  <span className="text-xs text-[var(--primary)] ml-1.5">{ing.abv}%vol</span>
+                                )}
+                                <div className="text-xs text-[var(--muted-foreground)] mt-1">
+                                  {si.methodName}
+                                  {si.resultWeight !== undefined && si.scaledAmount > 0 && (() => {
+                                    const ratio = ((si.scaledAmount - si.scaledResultWeight!) / si.scaledAmount * 100);
+                                    return <span className="ml-1.5 text-[var(--warning)]">损耗{ratio.toFixed(1)}%</span>;
+                                  })()}
+                                  {si.scaledResultWeight !== undefined && (
+                                    <span className="ml-1.5">
+                                      → {si.scaledResultWeight.toFixed(1)}g
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <span className="number-font text-sm text-[var(--primary)]">
+                                {si.scaledAmount.toFixed(1)}{si.unit}
+                              </span>
+                              {si.operationCount !== undefined && (
+                                <div className="text-xs text-[var(--muted-foreground)] mt-1">
+                                  {si.operationCount}次
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          {/* 折叠内容：显示原料详情 */}
+                          {ing && (
+                            <CollapsibleContent>
+                              <div className="mt-1 p-2 rounded bg-[var(--background)] text-xs space-y-1.5">
+                                {isSelfMade && relatedProduct ? (
+                                  <>
+                                    <div className="text-[var(--primary)] font-medium mb-1">自制原料 · 配方步骤</div>
+                                    {(relatedProduct.steps || []).length > 0 ? (
+                                      (relatedProduct.steps || []).map((rStep, rIdx) => (
+                                        <div key={rStep.id} className="pl-2 space-y-1">
+                                          <div className="flex items-center gap-1.5">
+                                            <span className="text-[var(--muted-foreground)]">步骤{rIdx + 1}</span>
+                                            <span className="text-[var(--foreground)]">{rStep.methodName}</span>
+                                          </div>
+                                          {(rStep.ingredients || []).map((rSi) => {
+                                            const scaledAmt = relatedProduct.standardOutput > 0
+                                              ? rSi.inputAmount * (si.scaledAmount / relatedProduct.standardOutput)
+                                              : rSi.inputAmount;
+                                            return (
+                                              <div key={rSi.id} className="flex items-center justify-between pl-3">
+                                                <span className="text-[var(--muted-foreground)]">{rSi.ingredientName}</span>
+                                                <span className="number-font">{scaledAmt.toFixed(1)}{rSi.unit || rSi.inputUnit}</span>
+                                              </div>
+                                            );
+                                          })}
+                                          {rStep.note && (
+                                            <div className="pl-3 text-[var(--muted-foreground)]">备注：{rStep.note}</div>
+                                          )}
+                                        </div>
+                                      ))
+                                    ) : (
+                                      <div className="text-[var(--muted-foreground)] pl-2">暂无配方步骤</div>
+                                    )}
+                                    {(relatedProduct.operationPlans || []).length > 0 && (
+                                      <div className="mt-1">
+                                        <div className="text-[var(--primary)] font-medium mb-1">操作方案</div>
+                                        {(relatedProduct.operationPlans || []).map((plan) => (
+                                          <div key={plan.templateId} className="pl-2 space-y-0.5">
+                                            <span className="text-[var(--foreground)]">{plan.templateName}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
+                                    <div className="text-[var(--primary)] font-medium mb-1">采购原料 · 购买信息</div>
+                                    <div className="flex items-center justify-between pl-2">
+                                      <span className="text-[var(--muted-foreground)]">进货规格</span>
+                                      <span className="number-font">{ing?.purchaseSpec || '-'}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between pl-2">
+                                      <span className="text-[var(--muted-foreground)]">进货单价</span>
+                                      <span className="number-font">¥{(ing?.purchasePrice || 0).toFixed(2)}/{ing?.purchaseUnit || '-'}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between pl-2">
+                                      <span className="text-[var(--muted-foreground)]">最小单位成本</span>
+                                      <span className="number-font text-[var(--primary)]">¥{(ing?.minUnitPrice || 0).toFixed(4)}/{ing?.minUnit || '-'}</span>
+                                    </div>
+                                    {ing && ing.abv > 0 && (
+                                      <div className="flex items-center justify-between pl-2">
+                                        <span className="text-[var(--muted-foreground)]">酒精度</span>
+                                        <span className="number-font">{ing.abv}%</span>
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </CollapsibleContent>
                           )}
                         </div>
-                      </div>
-                      <div className="text-right">
-                        <span className="number-font text-sm text-[var(--primary)]">
-                          {si.scaledAmount.toFixed(1)}{si.unit}
-                        </span>
-                        {si.operationCount !== undefined && (
-                          <div className="text-xs text-[var(--muted-foreground)] mt-1">
-                            {si.operationCount}次
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                      </Collapsible>
+                    );
+                  })}
                 </div>
               )}
 
